@@ -2,3 +2,4 @@ sim_series3
 patch_analysis_result_old
 .venv
 __pycache__
+.aider*
