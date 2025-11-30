@@ -8,6 +8,7 @@ import numpy as np
 import h5py
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
+import skrf as rf
 
 
 @dataclass
@@ -581,43 +582,59 @@ def plot_directivity_linear_polar(theta, nf2ff_res, freq, freq_index):
     plt.tight_layout()
 
 
-def plot_directivity_db_polar(theta, nf2ff_res, freq, freq_index):
+def plot_directivity_db_polar(theta, nf2ff_res, freq):
     """
-    Plot absolute directivity (db scale) in polar coordinates.
-    The main lobe will peak at Dmax (db).
+    Plot absolute directivity (dB) in polar coordinates using
+    P_rad (angular power distribution) and Prad (total radiated power).
 
     Parameters
     ----------
     theta : array-like
-        Angle values in degrees.
+        Theta angle values in degrees (nf2ff_res.theta).
     nf2ff_res : object
-        Result object from openEMS CalcNF2FF, must have .E_norm and .Dmax.
-    freq : array-like
-        Frequency array used in the simulation.
-    freq_index : int
-        Index into freq for the frequency to display.
+        Result object from openEMS CalcNF2FF.
+        Must provide: P_rad, Prad, Dmax.
+    freq : float
+        Frequency for inserting to plot captions.
     """
     theta_rad = np.deg2rad(theta)
 
-    # Dmax from dBi -> linear
-    Dmax_dB = nf2ff_res.Dmax[0]
+    # Angular power distribution and total radiated power
+    # P_rad shape: (nfreq, ntheta, nphi)
+    P_rad = np.abs(nf2ff_res.P_rad[0])       # ensure non-negative
+    Prad_tot = np.real(nf2ff_res.Prad[0])    # scalar
 
-    # Absolute directivity in linear units
-    D_dB = 20 * np.log10(nf2ff_res.E_norm[0] / np.max(nf2ff_res.E_norm[0]))
+    # Directivity in linear scale: D = 4π * P_rad / Prad
+    D_lin = 4.0 * np.pi * P_rad / Prad_tot
+
+    # Avoid log10(0) -> -inf
+    D_lin = np.maximum(D_lin, 1e-20)
+
+    # Convert to dB
+    D_dB = 10.0 * np.log10(D_lin)
+
+    # xz-plane and yz-plane cuts (assuming phi indices 0 and 1)
+    D_xz = np.squeeze(D_dB[:, 0])
+    D_yz = np.squeeze(D_dB[:, 1])
 
     plt.figure()
     ax = plt.subplot(111, projection="polar")
-    ax.plot(theta_rad, np.squeeze(D_dB[:, 0]), linewidth=2, label="xz-plane")
-    ax.plot(theta_rad, np.squeeze(D_dB[:, 1]), linewidth=2, label="yz-plane")
+    ax.plot(theta_rad, D_xz, linewidth=2, label="xz-plane (phi=0°)")
+    ax.plot(theta_rad, D_yz, linewidth=2, label="yz-plane (phi=90°)")
 
     # 0° at top, clockwise
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
 
+    Dmax_dB = 10 * np.log10(np.max(D_lin))
+    # Optionally compare with nf2ff_res.Dmax[fi]
+    Dmax_from_res = 10 * np.log10(nf2ff_res.Dmax[0])
+
     ax.set_title(
-        f"Frequency: {freq[freq_index] / 1e9:.3f} GHz — Directivity (dB). "
-        f"Dmax: {Dmax_dB:.3f}dB"
+        f"f = {freq/1e9:.3f} GHz — Directivity (dB)\n"
+        f"Dmax (integrated) ≈ {Dmax_dB:.2f} dB,  nf2ff Dmax = {Dmax_from_res:.2f} dB"
     )
+
     ax.grid(True)
     ax.legend(loc="lower right")
     plt.tight_layout()
@@ -660,7 +677,8 @@ def plot_s11(freq: np.ndarray,
              *,
              level_db: float = -10.0,
              annotate: bool = True,
-             ax: Optional[plt.Axes] = None) -> Dict[str, Optional[float]]:
+             ax: Optional[plt.Axes] = None,
+             title = "Reflection Coefficient $S_{11}$") -> Dict[str, Optional[float]]:
     """
     Plot S11 vs frequency and annotate the deepest minimum and the
     -10 dB bandwidth around that minimum.
@@ -677,6 +695,8 @@ def plot_s11(freq: np.ndarray,
         If True, draw markers/lines/labels on the plot.
     ax : matplotlib.axes.Axes or None
         Existing axes to plot on. Creates a new figure if None.
+    title : str
+        The optional title for the plot.
 
     Returns
     -------
@@ -762,7 +782,7 @@ def plot_s11(freq: np.ndarray,
     ax.grid(True)
     ax.set_ylabel("S-Parameter (dB)")
     ax.set_xlabel("Frequency (GHz)")
-    ax.set_title("Reflection Coefficient $S_{11}$")
+    ax.set_title(title)
 
     if annotate:
         # Horizontal threshold
@@ -1011,3 +1031,21 @@ def z0_from_s(s11: ArrayLike, s21: ArrayLike, s12: ArrayLike, s22: ArrayLike,
     """Convenience wrapper: S -> ABCD -> Z0."""
     A, B, C, D = s2abcd(s11, s21, s12, s22, zref=zref)
     return z0_from_abcd(B, C)
+
+
+def write_s2p_file(name, freq, Z0, s11, s21, s12, s22):
+    S = np.zeros((len(freq), 2, 2), dtype=complex)
+    S[:, 0, 0] = s11
+    S[:, 1, 1] = s22
+    S[:, 1, 0] = s21
+    S[:, 0, 1] = s12
+
+    ntw = rf.Network(frequency=freq, s=S, z0=Z0)
+    ntw.write_touchstone(name)
+
+def write_s1p_file(name, freq, Z0, s11):
+    S = np.zeros((len(freq), 1, 1), dtype=complex)
+    S[:, 0, 0] = s11
+
+    ntw = rf.Network(frequency=freq, s=S, z0=Z0)
+    ntw.write_touchstone(name)
