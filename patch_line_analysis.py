@@ -33,7 +33,7 @@ draw_Jy = 1
 
 draw_directivety_polar = 1  # Show directivity polar plot - radiation pattern
 draw_directivity_db = 1  # Show directivity dB plot    - radiation pattern
-draw_3d_pattern = 0  # Show antenna 3D pattern     - radiation pattern
+draw_3d_pattern = 1  # Show antenna 3D pattern     - radiation pattern
 
 # patch width (resonant length) in x-direction
 feed_lengths = []
@@ -426,11 +426,19 @@ if draw_directivety_polar or draw_directivity_db:
     nf2ff_res = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd], theta, phi, center=[0, 0, 1e-3])
 
 if draw_directivety_polar:
-    plot_directivity_db_polar(theta, nf2ff_res, freq, freqInd)
+    plot_directivity_db_polar(theta, nf2ff_res, freq[freqInd])
     finalize_plot()
 
 if draw_directivity_db:
-    plot_directivity_db(theta, nf2ff_res, freq, freqInd)
+    plot_directivity_db(theta, nf2ff_res, freq[freqInd])
+    finalize_plot()
+
+# For 3D plot, need full phi range
+if draw_3d_pattern:
+    theta_3d = np.arange(0.0, 181.0, 5.0)  # 0 to 180 degrees
+    phi_3d = np.arange(0.0, 360.0, 5.0)    # 0 to 360 degrees
+    nf2ff_res_3d = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd], theta_3d, phi_3d, center=[0, 0, 1e-3])
+    plot_directivity_3d(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd])
     finalize_plot()
 
 # If you still want to keep those tracking arrays:

@@ -8,6 +8,7 @@ import numpy as np
 import h5py
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import skrf as rf
 
 
@@ -680,6 +681,92 @@ def plot_directivity_db(theta, nf2ff_res, freq):
     plt.xlabel("Theta/Phi (deg)")
     plt.title(f"Frequency: {freq / 1e9:.3f} GHz")
     plt.legend()
+    plt.tight_layout()
+
+
+def plot_directivity_3d(theta, phi, nf2ff_res, freq):
+    """
+    Plot 3D directivity pattern as a surface plot.
+
+    Parameters
+    ----------
+    theta : array-like
+        Theta angle values in degrees (elevation, typically -180 to 180).
+    phi : array-like
+        Phi angle values in degrees (azimuth).
+    nf2ff_res : object
+        Result object from openEMS CalcNF2FF.
+        Must provide: P_rad, Prad, Dmax.
+    freq : float
+        Frequency for plot caption.
+    """
+    # Angular power distribution and total radiated power
+    # P_rad shape: (nfreq, ntheta, nphi)
+    P_rad = np.abs(nf2ff_res.P_rad[0])       # ensure non-negative
+    Prad_tot = np.real(nf2ff_res.Prad[0])    # scalar
+
+    # Directivity in linear scale: D = 4π * P_rad / Prad
+    D_lin = 4.0 * np.pi * P_rad / Prad_tot
+
+    # Avoid log10(0) -> -inf
+    D_lin = np.maximum(D_lin, 1e-20)
+
+    # Convert to dB
+    D_dB = 10.0 * np.log10(D_lin)
+
+    # Convert to linear for 3D visualization (use dB-scaled radius)
+    # Use normalized directivity for better visualization
+    D_normalized = D_dB - np.min(D_dB)  # Normalize to start from 0
+
+    # Create meshgrid for theta and phi
+    THETA, PHI = np.meshgrid(theta, phi, indexing='ij')
+
+    # Convert spherical coordinates to Cartesian
+    # Use directivity (in dB, normalized) as radius
+    theta_rad = np.deg2rad(THETA)
+    phi_rad = np.deg2rad(PHI)
+
+    # For better visualization, use linear directivity as radius
+    # but color by dB values
+    R = D_lin  # radius based on linear directivity
+
+    X = R * np.sin(theta_rad) * np.cos(phi_rad)
+    Y = R * np.sin(theta_rad) * np.sin(phi_rad)
+    Z = R * np.cos(theta_rad)
+
+    # Create 3D plot
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot surface with color representing dB values
+    surf = ax.plot_surface(X, Y, Z, facecolors=plt.cm.jet((D_dB - D_dB.min()) / (D_dB.max() - D_dB.min())),
+                          linewidth=0, antialiased=True, alpha=0.9)
+
+    # Add labels
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    Dmax_dB = 10 * np.log10(np.max(D_lin))
+    ax.set_title(f'3D Directivity Pattern\n'
+                f'f = {freq/1e9:.3f} GHz, Dmax = {Dmax_dB:.2f} dBi')
+
+    # Add colorbar
+    m = plt.cm.ScalarMappable(cmap=plt.cm.jet)
+    m.set_array(D_dB)
+    m.set_clim(D_dB.min(), D_dB.max())
+    cbar = plt.colorbar(m, ax=ax, shrink=0.5, aspect=5)
+    cbar.set_label('Directivity (dBi)')
+
+    # Set equal aspect ratio for better visualization
+    max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max() / 2.0
+    mid_x = (X.max()+X.min()) * 0.5
+    mid_y = (Y.max()+Y.min()) * 0.5
+    mid_z = (Z.max()+Z.min()) * 0.5
+    ax.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
     plt.tight_layout()
 
 
