@@ -17,7 +17,7 @@ draw_CAD = 0  # Show 3D model before simulation
 draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
-enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
+enable_simulation = 0  # temporary dirs must contain data for plots when enable_simulation=0
 save_to_pdf = 1  # prints all the result to the pdf, doesn't show any plots interactively
 
 draw_complex_impedance = 1  # Show impedance Re/Im plots - impedance plot
@@ -27,7 +27,8 @@ draw_smith_chart = 1  # Show Smith Chart           - impedance plot
 draw_Ez_absolute = 1  # Show Ez electromagnetic field slice
 draw_Ez_snap = 1
 
-draw_directivety_polar = 1  # Show directivity polar plot - radiation pattern
+draw_directivety_polar_db = 1  # Show directivity db polar plot - radiation pattern
+draw_directivety_polar = 1  # Show directivity polar plot    - radiation pattern
 draw_directivity_db = 1  # Show directivity dB plot    - radiation pattern
 draw_3d_pattern = 0  # Show antenna 3D pattern     - radiation pattern
 
@@ -362,17 +363,21 @@ for sweep_idx in range(0, sweep_number):
     # ################
     # Plot Directivity
     # ################
-    if draw_directivety_polar or draw_directivity_db:
+    if draw_directivety_polar_db or draw_directivety_polar or draw_directivity_db:
         theta = np.arange(-180.0, 180.0, 2.0)
         phi = [0., 90.]
         nf2ff_res = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd2], theta, phi, center=[0, 0, 1e-3])
 
+    if draw_directivety_polar_db:
+        plot_directivity_db_polar(theta, nf2ff_res, freq[freqInd2])
+        finalize_plot()
+
     if draw_directivety_polar:
-        plot_directivity_linear_polar(theta, nf2ff_res, freq, freqInd2)
+        plot_directivity_linear_polar(theta, nf2ff_res, freq[freqInd2])
         finalize_plot()
 
     if draw_directivity_db:
-        plot_directivity_db(theta, nf2ff_res, freq, freqInd2)
+        plot_directivity_db(theta, nf2ff_res, freq[freqInd2])
         finalize_plot()
 
     lengths.append(patch_length)

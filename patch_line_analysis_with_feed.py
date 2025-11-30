@@ -37,7 +37,8 @@ draw_Js_absolute = 1  # Show the surface current density of the patch
 draw_Jx = 1
 draw_Jy = 1
 
-draw_directivety_polar = 1  # Show directivity polar plot - radiation pattern
+draw_directivity_polar_db = 1  # Show directivity polar db plot - radiation pattern
+draw_directivity_polar = 1  # Show directivity polar plot - radiation pattern
 draw_directivity_db = 1  # Show directivity dB plot    - radiation pattern
 draw_3d_pattern = 0  # Show antenna 3D pattern     - radiation pattern
 
@@ -328,17 +329,21 @@ if draw_Jy:
 # ################
 # Plot Directivity
 # ################
-if draw_directivety_polar or draw_directivity_db:
+if draw_directivity_polar_db or draw_directivity_polar or draw_directivity_db:
     theta = np.arange(-180.0, 180.0, 2.0)
     phi = [0., 90.]
     nf2ff_res = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd], theta, phi, center=[20, 85, 1e-3])
 
-if draw_directivety_polar:
+if draw_directivity_polar_db:
     plot_directivity_db_polar(theta, nf2ff_res, freq[freqInd])
     finalize_plot()
 
+if draw_directivity_polar:
+    plot_directivity_linear_polar(theta, nf2ff_res, freq[freqInd])
+    finalize_plot()
+
 if draw_directivity_db:
-    plot_directivity_db(theta, nf2ff_res, freq, freqInd)
+    plot_directivity_db(theta, nf2ff_res, freq[freqInd])
     finalize_plot()
 
 if save_to_pdf:

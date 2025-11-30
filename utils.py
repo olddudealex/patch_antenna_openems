@@ -540,7 +540,7 @@ def plot_smith_skrf(
     }
 
 
-def plot_directivity_linear_polar(theta, nf2ff_res, freq, freq_index):
+def plot_directivity_linear_polar(theta, nf2ff_res, freq):
     """
     Plot absolute directivity (linear scale) in polar coordinates.
     The main lobe will peak at Dmax (linear).
@@ -551,31 +551,31 @@ def plot_directivity_linear_polar(theta, nf2ff_res, freq, freq_index):
         Angle values in degrees.
     nf2ff_res : object
         Result object from openEMS CalcNF2FF, must have .E_norm and .Dmax.
-    freq : array-like
-        Frequency array used in the simulation.
-    freq_index : int
-        Index into freq for the frequency to display.
+    freq : float
+        Frequency for inserting to plot captions.
     """
     theta_rad = np.deg2rad(theta)
 
-    # Dmax from dBi -> linear
-    Dmax_dB = nf2ff_res.Dmax[0]
+    # Angular power distribution and total radiated power
+    # P_rad shape: (nfreq, ntheta, nphi)
+    P_rad = np.abs(nf2ff_res.P_rad[0])       # ensure non-negative
+    Prad_tot = np.real(nf2ff_res.Prad[0])    # scalar
 
-    # Absolute directivity in linear units
-    D_db = 20 * np.log10(nf2ff_res.E_norm[0] / np.max(nf2ff_res.E_norm[0]))
+    # Directivity in linear scale: D = 4π * P_rad / Prad
+    D_lin = 4.0 * np.pi * P_rad / Prad_tot
 
     plt.figure()
     ax = plt.subplot(111, projection="polar")
-    ax.plot(theta_rad, np.squeeze(D_db[:, 0]), linewidth=2, label="xz-plane")
-    ax.plot(theta_rad, np.squeeze(D_db[:, 1]), linewidth=2, label="yz-plane")
+    ax.plot(theta_rad, np.squeeze(D_lin[:, 0]), linewidth=2, label="xz-plane")
+    ax.plot(theta_rad, np.squeeze(D_lin[:, 1]), linewidth=2, label="yz-plane")
 
     # 0° at top, clockwise
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
 
     ax.set_title(
-        f"Frequency: {freq[freq_index] / 1e9:.3f} GHz — Directivity (linear). "
-        f"Dmax: {Dmax_dB:.3f}"
+        f"Frequency: {freq / 1e9:.3f} GHz — Directivity (linear). "
+        f"Dmax: {np.max(D_lin):.3f}"
     )
     ax.grid(True)
     ax.legend(loc="lower right")
@@ -640,7 +640,7 @@ def plot_directivity_db_polar(theta, nf2ff_res, freq):
     plt.tight_layout()
 
 
-def plot_directivity_db(theta, nf2ff_res, freq, freq_index):
+def plot_directivity_db(theta, nf2ff_res, freq):
     """
     Plot directivity in dBi (Cartesian x–y plot).
 
@@ -650,24 +650,35 @@ def plot_directivity_db(theta, nf2ff_res, freq, freq_index):
         Angle values in degrees.
     nf2ff_res : object
         Result object from openEMS CalcNF2FF, must have .E_norm and .Dmax.
-    freq : array-like
-        Frequency array used in the simulation.
-    freq_index : int
-        Index into freq for the frequency to display.
+    freq : float
+        Frequency for inserting to plot captions.
     """
-    E_norm_db = (
-            20.0 * np.log10(nf2ff_res.E_norm[0] / np.max(nf2ff_res.E_norm[0]))
-            + nf2ff_res.Dmax[0]
-    )
+    # Angular power distribution and total radiated power
+    # P_rad shape: (nfreq, ntheta, nphi)
+    P_rad = np.abs(nf2ff_res.P_rad[0])       # ensure non-negative
+    Prad_tot = np.real(nf2ff_res.Prad[0])    # scalar
+
+    # Directivity in linear scale: D = 4π * P_rad / Prad
+    D_lin = 4.0 * np.pi * P_rad / Prad_tot
+
+    # Avoid log10(0) -> -inf
+    D_lin = np.maximum(D_lin, 1e-20)
+
+    # Convert to dB
+    D_dB = 10.0 * np.log10(D_lin)
+
+    # xz-plane and yz-plane cuts (assuming phi indices 0 and 1)
+    D_xz = np.squeeze(D_dB[:, 0])
+    D_yz = np.squeeze(D_dB[:, 1])
 
     plt.figure()
-    plt.plot(theta, np.squeeze(E_norm_db[:, 0]), "k-", linewidth=2, label="xz-plane")
-    plt.plot(theta, np.squeeze(E_norm_db[:, 1]), "r--", linewidth=2, label="yz-plane")
+    plt.plot(theta, np.squeeze(D_xz), "k-", linewidth=2, label="xz-plane")
+    plt.plot(theta, np.squeeze(D_yz), "r--", linewidth=2, label="yz-plane")
 
     plt.grid(True)
     plt.ylabel("Directivity (dBi)")
-    plt.xlabel("Theta (deg)")
-    plt.title(f"Frequency: {freq[freq_index] / 1e9:.3f} GHz")
+    plt.xlabel("Theta/Phi (deg)")
+    plt.title(f"Frequency: {freq / 1e9:.3f} GHz")
     plt.legend()
     plt.tight_layout()
 
