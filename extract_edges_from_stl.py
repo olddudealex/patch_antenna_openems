@@ -36,8 +36,8 @@ def main(argv=None):
                     help="Angle tolerance (deg) for parallelism to axis (default 1°)")
     ap.add_argument("--pos_tol", type=float, default=1e-6,
                     help="Position dedupe tolerance (default 1e-6, same units as STL)")
-    ap.add_argument("--out_prefix", default="meshlines",
-                    help="Prefix for CSV outputs (default: meshlines)")
+    ap.add_argument("--out_prefix", default="meshlines/meshlines",
+                    help="Prefix for CSV outputs (default: meshlines/meshlines)")
     ap.add_argument("--emit_python_snippet", action="store_true",
                     help="Print a Python snippet for openEMS grid")
     args = ap.parse_args(argv)
@@ -84,6 +84,10 @@ def main(argv=None):
     z_lines = dedupe(vz, tol=args.pos_tol)
 
     # Write CSVs
+    import os
+    prefix_dir = os.path.dirname(args.out_prefix)
+    if prefix_dir:
+        os.makedirs(prefix_dir, exist_ok=True)
     np.savetxt(f"{args.out_prefix}_x.csv", x_lines, fmt="%.9g")
     np.savetxt(f"{args.out_prefix}_y.csv", y_lines, fmt="%.9g")
     np.savetxt(f"{args.out_prefix}_z.csv", z_lines, fmt="%.9g")

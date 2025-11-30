@@ -42,8 +42,8 @@ conductances = []
 frequencies = []
 
 # setup feeding
-feed_width = 1
-feed_R = 50
+feed_width = 3.9  # mm
+feed_R = 150
 
 # frequency of interest
 f0 = 5.8e9  # center frequency
@@ -64,7 +64,7 @@ wavelength_substrate = wavelength_freespace / sqrt(substrate_epsR)
 patch_number = 5
 
 # antenna dimensions
-antenna_length_max = wavelength_substrate*patch_number  # This length used for substrate length
+antenna_length_max = wavelength_substrate * (patch_number+0.5)  # This length used for substrate length
 
 # substrate dimensions
 substrate_width = wavelength_freespace
@@ -80,390 +80,364 @@ sim_box = [substrate_width+wavelength_freespace/4*air_gap,
            wavelength_freespace*2/4*air_gap]
 
 # geometrical parameters
-patch_length_start = 12.7  # mm
-patch_width_start = 20  # mm
-feed_length_start = 16  # mm
+patch_length = 14.1  # mm
+patch_width = 19  # mm
 
-# sweep parameters
-sweep_number = 1
-patch_length_step = 0  # mm
-patch_width_step = 0  # mm
-feed_length_step = 0  # mm
+# feed length between the patches
+feed_length = 14.1  # mm
 
-# patch shift
-patch_length_shift = [0, 0, 0, 0, 0]
+# matching stub
+feed_length_0 = 10.2  # mm; = 14.1 - 3.9
+matching_length_1 = 0  # mm
+matching_length_2 = 0  # mm
+matching_length_3 = 0  # mm, it's just input feed line, not for matching
+matching_width = 3.9  # mm
 
-for sweep_idx in range(0, sweep_number):
-    rects_mm = []  # the array of rectangulars that could be used as mask for visualization
+########################################################################################
 
-    patch_length_0 = patch_length_start + patch_length_step * sweep_idx
-    patch_width = patch_width_start + patch_width_step * sweep_idx
-    feed_length = feed_length_start + feed_length_step * sweep_idx
-    # General parameter setup
-    Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_line_analysis_{patch_length_0}_{patch_width}_"
-                                                   f"{patch_number}_{feed_length}")
+# the array of rectangulars that could be used as mask for visualization
+rects_mm = []
 
-    # FDTD setup
-    FDTD = openEMS(NrTS=60000, EndCriteria=1e-5)
-    FDTD.SetGaussExcite(f0, fc)
-    FDTD.SetBoundaryCond(['PML_8', 'PML_8', 'PML_8', 'PML_8', 'PML_8', 'PML_8'])
+# General parameter setup
+Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_line_analysis_{patch_length}_{patch_width}_"
+                                               f"{patch_number}_{feed_length}")
 
-    CSX = ContinuousStructure()
-    FDTD.SetCSX(CSX)
-    mesh = CSX.GetGrid()
-    mesh.SetDeltaUnit(1e-3)
-    mesh_res = C0 / (f0 + fc) / 1e-3 / 20
+# FDTD setup
+FDTD = openEMS(NrTS=60000, EndCriteria=1e-5)
+FDTD.SetGaussExcite(f0, fc)
+FDTD.SetBoundaryCond(['PML_8', 'PML_8', 'PML_8', 'PML_8', 'PML_8', 'PML_8'])
 
-    # Generate properties, primitives and mesh-grid
-    # initialize the mesh with the "air-box" dimensions
-    mesh.AddLine('x', [-sim_box[0] / 2, sim_box[0] / 2])
-    mesh.AddLine('y', [-sim_box[1] / 2, sim_box[1] / 2])
-    mesh.AddLine('z', [-sim_box[2] / 3, sim_box[2] * 2 / 3])
+CSX = ContinuousStructure()
+FDTD.SetCSX(CSX)
+mesh = CSX.GetGrid()
+mesh.SetDeltaUnit(1e-3)
+mesh_res = C0 / (f0 + fc) / 1e-3 / 20
 
-    # create substrate
-    substrate = CSX.AddMaterial('substrate', epsilon=substrate_epsR, kappa=substrate_kappa)
-    start = [-substrate_width / 2, -substrate_length / 2, 0]
-    stop = [substrate_width / 2, substrate_length / 2, substrate_thickness]
-    substrate.AddBox(priority=0, start=start, stop=stop)
+# Generate properties, primitives and mesh-grid
+# initialize the mesh with the "air-box" dimensions
+mesh.AddLine('x', [-sim_box[0] / 2, sim_box[0] / 2])
+mesh.AddLine('y', [-sim_box[1] / 2, sim_box[1] / 2])
+mesh.AddLine('z', [-sim_box[2] / 3, sim_box[2] * 2 / 3])
 
-    # create patch and microstrips
-    patch = CSX.AddMetal('patch')  # create a perfect electric conductor (PEC)
+# create substrate
+substrate = CSX.AddMaterial('substrate', epsilon=substrate_epsR, kappa=substrate_kappa)
+start = [-substrate_width / 2, -substrate_length / 2, 0]
+stop = [substrate_width / 2, substrate_length / 2, substrate_thickness]
+substrate.AddBox(priority=0, start=start, stop=stop)
 
-    network = CSX.AddMetal('network')
-    y_shift_first = (patch_length_0 + feed_length) * (patch_number - 1) / 2
-    coord_precision = 3  # down to 0.001mm
+# create patch and microstrips
+patch = CSX.AddMetal('patch')  # create a perfect electric conductor (PEC)
 
-    start = [-feed_width / 2, -y_shift_first - patch_length_0 / 2 - feed_length, substrate_thickness]
-    stop = [feed_width / 2, y_shift_first, substrate_thickness]
-    network.AddBox(priority=11, start=start, stop=stop)
-    FDTD.AddEdges2Grid(dirs='xy', properties=network, metal_edge_res=mesh_res / 4)
-    FDTD.AddEdges2Grid(dirs='xy', properties=network, metal_edge_res=None)
-    mesh.AddLine('x', 0)
+feed = CSX.AddMetal('feed')
+y_shift_first = (patch_length + feed_length) * (patch_number - 1) / 2
+coord_precision = 3  # down to 0.001mm
 
-    for patch_index in range(patch_number):
-        # shift for current patch
-        patch_length = patch_length_0 + patch_length_shift[patch_index]
-        y_shift = y_shift_first - (patch_length_0 + feed_length) * patch_index
+start = [-feed_width / 2, -y_shift_first + patch_length / 2, substrate_thickness]
+stop = [feed_width / 2, y_shift_first - patch_length / 2, substrate_thickness]
+feed.AddBox(priority=11, start=start, stop=stop)
+#FDTD.AddEdges2Grid(dirs='x', properties=feed, metal_edge_res=mesh_res / 4)
+#FDTD.AddEdges2Grid(dirs='x', properties=feed, metal_edge_res=None)
+mesh.AddLine('x', 0)
 
-        # --- patch coordinates ---
-        start = np.round([-patch_width / 2,
-                          -patch_length / 2 - y_shift,
-                          substrate_thickness], coord_precision)
-        stop = np.round([patch_width / 2,
-                         patch_length / 2 - y_shift,
-                         substrate_thickness], coord_precision)
+for patch_index in range(patch_number):
+    y_shift = y_shift_first - (patch_length + feed_length) * patch_index
 
-        patch.AddBox(priority=10, start=start.tolist(), stop=stop.tolist())
-        FDTD.AddEdges2Grid(dirs='xy', properties=patch, metal_edge_res=None)  # use mesh exact alignment to patch edges
+    # --- patch coordinates ---
+    start = np.round([-patch_width / 2,
+                      -patch_length / 2 - y_shift,
+                      substrate_thickness], coord_precision)
+    stop = np.round([patch_width / 2,
+                     patch_length / 2 - y_shift,
+                     substrate_thickness], coord_precision)
 
-        rects_mm.append({
-            "x1": float(start[0]), "x2": float(stop[0]),
-            "y1": float(start[1]), "y2": float(stop[1])
-        })
+    patch.AddBox(priority=10, start=start.tolist(), stop=stop.tolist())
+    FDTD.AddEdges2Grid(dirs='xy', properties=patch, metal_edge_res=None)  # use mesh exact alignment to patch edges
 
-        # --- feed line coordinates ---
-        # start = np.round([-feed_width / 2,
-        #                   -patch_length / 2 - y_shift,
-        #                   substrate_thickness], coord_precision)
-        # stop = np.round([feed_width / 2,
-        #                  -patch_length / 2 - feed_length - y_shift,
-        #                  substrate_thickness], coord_precision)
-        #
-        # network.AddBox(priority=10, start=start.tolist(), stop=stop.tolist())
-        # FDTD.AddEdges2Grid(dirs='xy', properties=network, metal_edge_res=mesh_res / 4)
-        #
-        # rects_mm.append({
-        #     "x1": float(start[0]), "x2": float(stop[0]),
-        #     "y1": float(stop[1]), "y2": float(start[1])
-        # })
+    rects_mm.append({
+        "x1": float(start[0]), "x2": float(stop[0]),
+        "y1": float(start[1]), "y2": float(stop[1])
+    })
 
-    # create ground (same size as substrate)
-    gnd = CSX.AddMetal('gnd')  # create a perfect electric conductor (PEC)
-    start = [-substrate_width/2, -substrate_length/2, 0]
-    stop = [substrate_width/2, substrate_length/2, 0]
-    gnd.AddBox(start, stop, priority=10)
-    FDTD.AddEdges2Grid(dirs='xy', properties=gnd)
+network = CSX.AddMetal('network')
 
-    # apply the excitation & resist as a current source
-    feed_pos = -patch_length / 2 - feed_length - y_shift_first
-    start = [-feed_width/2, feed_pos, 0]
-    stop = [feed_width/2, feed_pos, substrate_thickness]
-    port = FDTD.AddLumpedPort(1, feed_R, start, stop, 'z', 1.0,
-                              priority=5,
-                              #edges2grid='xy'
-                              )
+# add matching scheme in the beginning
+reference_surface_y = -y_shift_first - patch_length / 2 - feed_length_0
 
-    # add extra cells to discretize the substrate thickness
-    mesh.AddLine('z', linspace(0, substrate_thickness, substrate_cells + 1))
+start = [-feed_width / 2, reference_surface_y + feed_length_0, substrate_thickness]
+stop = [feed_width / 2, reference_surface_y, substrate_thickness]
+network.AddBox(priority=11, start=start, stop=stop)
 
-    # Add mesh for feeding port
-    res = mesh_res / 4  # Finer resolution for feeding line
-    mesh.AddLine('y', [ feed_pos, feed_pos - res, feed_pos + res])
+start = [-matching_width / 2, reference_surface_y, substrate_thickness]
+stop = [matching_width / 2, reference_surface_y - matching_length_1 - matching_width - matching_length_3,
+        substrate_thickness]
+network.AddBox(priority=11, start=start, stop=stop)
 
-    # increase density
-    mesh.SmoothMeshLines('all', mesh_res, 1.4)
+start = [matching_width / 2, reference_surface_y - matching_length_1, substrate_thickness]
+stop = [matching_width / 2 + matching_length_2, reference_surface_y - matching_length_1 - matching_width,
+        substrate_thickness]
+network.AddBox(priority=11, start=start, stop=stop)
+FDTD.AddEdges2Grid(dirs='x', properties=network, metal_edge_res=mesh_res / 4)
+#FDTD.AddEdges2Grid(dirs='y', properties=network, metal_edge_res=mesh_res / 2)
+FDTD.AddEdges2Grid(dirs='xy', properties=network, metal_edge_res=None)
 
-    # Add the nf2ff recording box
-    nf2ff = FDTD.CreateNF2FFBox()
+# create ground (same size as substrate)
+gnd = CSX.AddMetal('gnd')  # create a perfect electric conductor (PEC)
+start = [-substrate_width/2, -substrate_length/2, 0]
+stop = [substrate_width/2, substrate_length/2, 0]
+gnd.AddBox(start, stop, priority=10)
+FDTD.AddEdges2Grid(dirs='xy', properties=gnd)
 
-    # Add the dumping of E field
-    et = CSX.AddDump('Et', dump_type=0, file_type=1)
-    # Save a big box including substrate + air above
-    et.AddBox(start=[-sim_box[0] / 2, -sim_box[1] / 2, -sim_box[2] / 3],
-              stop=[sim_box[0] / 2, sim_box[1] / 2, sim_box[2] * 2 / 3])
-    # (Optional) also H-field or current density:
-    # ht = CSX.AddDump('Ht', dump_type=1, file_type=file_type); ht.AddBox(start=..., stop=...)
-    jt = CSX.AddDump('Jt', dump_type=3, file_type=1)
-    jt.AddBox(start=[-sim_box[0] / 2, -sim_box[1] / 2, -sim_box[2] / 3],
-              stop=[sim_box[0] / 2, sim_box[1] / 2, sim_box[2] * 2 / 3])
+# apply the excitation & resist as a current source
+feed_pos = reference_surface_y - matching_length_1 - matching_width - matching_length_3
+start = [-matching_width/2, feed_pos, 0]
+stop = [matching_width/2, feed_pos, substrate_thickness]
+port = FDTD.AddLumpedPort(1, feed_R, start, stop, 'z', 1.0,
+                          priority=5,
+                          #edges2grid='xy'
+                          )
 
-    # Run the simulation
-    if draw_CAD:  # debugging only
-        CSX_file = os.path.join(Sim_Path, 'patch_line.xml')
-        if not os.path.exists(Sim_Path):
-            os.mkdir(Sim_Path)
-        CSX.Write2XML(CSX_file)
-        from CSXCAD import AppCSXCAD_BIN
+# add extra cells to discretize the substrate thickness
+mesh.AddLine('z', linspace(0, substrate_thickness, substrate_cells + 1))
 
-        os.system(AppCSXCAD_BIN + ' "{}"'.format(CSX_file))
+# Add mesh for feeding port
+res = mesh_res / 4  # Finer resolution for feeding line
+mesh.AddLine('y', [ feed_pos, feed_pos - res, feed_pos + res])
 
-    if draw_CAD_exit:
-        exit()
+# increase density
+mesh.SmoothMeshLines('all', mesh_res, 1.4)
 
-    if enable_simulation:
-        FDTD.Run(Sim_Path, verbose=3, cleanup=True, numThreads=4)
+# Add the nf2ff recording box
+nf2ff = FDTD.CreateNF2FFBox()
 
-    # ###########################################################
-    # Post-processing and plotting
-    # ###########################################################
+# Add the dumping of E field
+et = CSX.AddDump('Et', dump_type=0, file_type=1)
+# Save a big box including substrate + air above
+et.AddBox(start=[-sim_box[0] / 2, -sim_box[1] / 2, -sim_box[2] / 3],
+          stop=[sim_box[0] / 2, sim_box[1] / 2, sim_box[2] * 2 / 3])
+# (Optional) also H-field or current density:
+# ht = CSX.AddDump('Ht', dump_type=1, file_type=file_type); ht.AddBox(start=..., stop=...)
+jt = CSX.AddDump('Jt', dump_type=3, file_type=1)
+jt.AddBox(start=[-sim_box[0] / 2, -sim_box[1] / 2, -sim_box[2] / 3],
+          stop=[sim_box[0] / 2, sim_box[1] / 2, sim_box[2] * 2 / 3])
 
-    # directory of the script file itself
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    filename = (f"feed_length={feed_length} length={patch_length}mm width={patch_width}mm "
-                f"patch_number={patch_number} results.pdf")
-    pdf_path = os.path.join(script_dir, filename)
-    pdf = PdfPages(pdf_path) if save_to_pdf else None
+# Run the simulation
+if draw_CAD:  # debugging only
+    CSX_file = os.path.join(Sim_Path, 'patch_line.xml')
+    if not os.path.exists(Sim_Path):
+        os.mkdir(Sim_Path)
+    CSX.Write2XML(CSX_file)
+    from CSXCAD import AppCSXCAD_BIN
 
-    def finalize_plot(pdf=pdf, save_to_pdf=save_to_pdf):
-        """Save or show the current Matplotlib figure depending on mode."""
-        if save_to_pdf and pdf is not None:
-            pdf.savefig()
-            plt.close()
+    os.system(AppCSXCAD_BIN + ' "{}"'.format(CSX_file))
 
-    freq = np.linspace(f0 - fc, f0 + fc, 401)
-    port.CalcPort(Sim_Path, freq)
+if draw_CAD_exit:
+    exit()
 
-    # ##################################
-    # Plot Complex Impedance
-    # ##################################
-    if draw_complex_impedance:
-        Zin = port.uf_tot / port.if_tot
-        figure()
-        plot(freq / 1e9, np.abs(Zin), 'k-', label='Zin real')
-        plot(freq / 1e9, np.imag(Zin), 'r--', label='Zin imag')
-        grid()
-        legend()
-        ylabel('Ohm')
-        xlabel('Frequency (GHz)')
-        finalize_plot()
+if enable_simulation:
+    FDTD.Run(Sim_Path, verbose=3, cleanup=True, numThreads=4)
 
-    # ##################################
-    # Plot S11 (dB)
-    # ##################################
-    s11 = port.uf_ref / port.uf_inc
-    s11_dB = 20.0 * np.log10(np.abs(s11))
-    if draw_s11:
-        plot_s11(freq, s11_dB)
-        finalize_plot()
-
-    # Required frequency 5.8GHz
-    freqInd = freq.shape[0] // 2
-    s11_1 = s11[freqInd]
-
-    # Find minimum on S11 graph
-    freqInd2 = int(np.argmin(np.abs(s11)))
-    s11_2 = s11[freqInd2]
-
-    # Find patch equivalent resistance R and normalized conductance G
-    # at required/actual resonant frequencies
-    patchR = (1 + s11_1) / (1 - s11_1) * feed_R
-    patchG_norm = (1 - s11_1) / (1 + s11_1)
-
-    patchR2 = (1 + s11_2) / (1 - s11_2) * feed_R
-    patchG2_norm = (1 - s11_2) / (1 + s11_2)
-
-    # ##################################
-    # Plot Smith Chart
-    # ##################################
-    if draw_smith_chart:
-        ax, meta = plot_smith_skrf(
-            s11, freq_hz=freq,
-            idx_main=freqInd, idx_res=freqInd2,
-            patch_width_mm=patch_width, patch_length_mm=patch_length,
-            patchR=patchR, patchG=patchG_norm, patchR2=patchR2, patchG2=patchG2_norm,
-        )
-        finalize_plot()
-
-    # ###############
-    # Plot Ez field
-    # ###############
-    if draw_Ez_absolute or draw_Ez_snap:
-        fd = read_hdf5_dump(f"{Sim_Path}/Et.h5")
-        E_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
-        patch_y_edges = [rect["y1"] for rect in rects_mm] + [rect["y2"] for rect in rects_mm]
-
-    if draw_Ez_absolute:
-        # 2D plot with your custom projection
-        pc, info2d = plot_ez_2d(
-            fd, E_fd, z_value=0.0008,
-            func=lambda Ez: np.abs(Ez),
-            func_str="|Ez|",
-            cmap="jet",
-            #clim=(2, 12),
-            rects_mm=rects_mm,
-            outside_color="lightgray"
-        )
-        finalize_plot()
-
-        # 1D line cut along Y
-        line, info1d = plot_ez_line_y(
-            fd, E_fd, z_value=0.0008,
-            func=lambda Ez: np.abs(Ez),
-            func_str="|Ez|",
-            #clim=(2, 12),
-            x_value=None, y_lines_mm=np.array(patch_y_edges)
-        )
-        finalize_plot()
-
-    if draw_Ez_snap:
-        ix, iy1, iz = coord_to_index(x=0, y=feed_pos/1000, z=0.0008, fd=fd)
-        _, iy2, _ = coord_to_index(x=0, y=(-feed_pos-feed_length)/1000, z=0.0008, fd=fd)
-
-        reference_line = E_fd[ix, iy1:iy2, iz, 2]
-        dphi = find_max_ampl_phase(reference_line)
-
-        E_snap = np.real(E_fd * np.exp(-1j * dphi))
-
-        # 2D plot with your custom projection
-        pc, info2d = plot_ez_2d(
-            fd, E_snap, z_value=0.0008,
-            func=lambda Ez: Ez,
-            func_str=f"Ez snapshot (dphi={dphi*180/np.pi:.2f}deg)",
-            cmap="jet",
-            rects_mm=rects_mm,
-            outside_color="lightgray",
-            #clim=(-12, 4)
-        )
-        finalize_plot()
-
-        # 1D line cut along Y
-        line, info1d = plot_ez_line_y(
-            fd, E_snap, z_value=0.0008,
-            func=lambda Ez: Ez,
-            func_str=f"Ez snapshot (dphi={dphi*180/np.pi:.2f}deg)",
-            #clim=(-12, 4),
-            x_value=None,
-            y_lines_mm=np.array(patch_y_edges)
-        )
-        finalize_plot()
-
-    if draw_Js_absolute or draw_Jx or draw_Jy:
-        fd = read_hdf5_dump(f"{Sim_Path}/Jt.h5")
-        J_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
-
-    if draw_Js_absolute:
-        # 2D plot with your custom projection
-        pc, info2d = plot_js_2d(
-            fd, J_fd, z_value=substrate_thickness/1000,
-            func=lambda Jx, Jy, Jz: np.sqrt((Jx * np.conj(Jx) + Jy * np.conj(Jy)).real),
-            func_str="|Js|",
-            cmap="jet",
-            #clim=(0, 50)
-        )
-        finalize_plot()
-
-    if draw_Jx:
-        # 2D plot with your custom projection
-        pc, info2d = plot_js_2d(
-            fd, J_fd, z_value=substrate_thickness/1000,
-            func=lambda Jx, Jy, Jz: np.abs(Jx),
-            func_str="|Jx|",
-            cmap="jet",
-            #clim=(0, 50)
-        )
-        finalize_plot()
-
-    if draw_Jy:
-        # 2D plot with your custom projection
-        pc, info2d = plot_js_2d(
-            fd, J_fd, z_value=substrate_thickness/1000,
-            func=lambda Jx, Jy, Jz: np.abs(Jy),
-            func_str="|Jy|",
-            cmap="jet",
-            #clim=(0, 50)
-        )
-        finalize_plot()
-
-
-    # ################
-    # Plot Directivity
-    # ################
-    if draw_directivety_polar or draw_directivity_db:
-        theta = np.arange(-180.0, 180.0, 2.0)
-        phi = [0., 90.]
-        nf2ff_res = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd], theta, phi, center=[0, 0, 1e-3])
-
-    if draw_directivety_polar:
-        plot_directivity_db_polar(theta, nf2ff_res, freq, freqInd)
-        finalize_plot()
-
-    if draw_directivity_db:
-        plot_directivity_db(theta, nf2ff_res, freq, freqInd)
-        finalize_plot()
-
-    # If you still want to keep those tracking arrays:
-    feed_lengths.append(feed_length)
-    resistances.append(patchR2)
-    conductances.append(patchG2_norm)
-    frequencies.append(meta["freq_res_hz"]/1e9 if meta["freq_res_hz"] else None)
-
-    if save_to_pdf:
-        pdf.close()
-    else:
-        plt.show()
-
+# ###########################################################
+# Post-processing and plotting
+# ###########################################################
 
 # directory of the script file itself
 script_dir = os.path.dirname(os.path.abspath(__file__))
-filename = (f"Results length={patch_length}mm "
-            f"feed_length_start={feed_length}mm "
-            f"feed_length_step={feed_length_step}mm "
-            f"patch_number={patch_number} "
-            f"sweep_number={sweep_number}.pdf")
-pdf_path = os.path.join(script_dir, filename)
+reports_dir = os.path.join(script_dir, "reports")
+os.makedirs(reports_dir, exist_ok=True)
+filename = (f"feed_length={feed_length} length={patch_length}mm width={patch_width}mm "
+            f"patch_number={patch_number} results.pdf")
+pdf_path = os.path.join(reports_dir, filename)
 pdf = PdfPages(pdf_path) if save_to_pdf else None
 
-plt.figure()
-plt.plot(feed_lengths, np.real(resistances), "k-", linewidth=2, label="")
-plt.grid(True)
-plt.ylabel("Real Resistance, Ohm")
-plt.xlabel("Feed Length, mm")
-plt.title("Resistance vs Feed Length")
-plt.tight_layout()
-if save_to_pdf and pdf is not None:
-    pdf.savefig()
-    plt.close()
+def finalize_plot(pdf=pdf, save_to_pdf=save_to_pdf):
+    """Save or show the current Matplotlib figure depending on mode."""
+    if save_to_pdf and pdf is not None:
+        pdf.savefig()
+        plt.close()
 
-plt.figure()
-plt.plot(feed_lengths, frequencies, "k-", linewidth=2, label="")
-plt.grid(True)
-plt.ylabel("Resonance Frequency, GHz")
-plt.xlabel("Feed Length, mm")
-plt.title("Frequency vs Feed Length")
-plt.tight_layout()
-if save_to_pdf and pdf is not None:
-    pdf.savefig()
-    plt.close()
+freq = np.linspace(f0 - fc, f0 + fc, 401)
+port.CalcPort(Sim_Path, freq)
+
+# ##################################
+# Plot Complex Impedance
+# ##################################
+if draw_complex_impedance:
+    Zin = port.uf_tot / port.if_tot
+    figure()
+    plot(freq / 1e9, np.abs(Zin), 'k-', label='Zin real')
+    plot(freq / 1e9, np.imag(Zin), 'r--', label='Zin imag')
+    grid()
+    legend()
+    ylabel('Ohm')
+    xlabel('Frequency (GHz)')
+    finalize_plot()
+
+# ##################################
+# Plot S11 (dB)
+# ##################################
+s11 = port.uf_ref / port.uf_inc
+s11_dB = 20.0 * np.log10(np.abs(s11))
+if draw_s11:
+    plot_s11(freq, s11_dB)
+    finalize_plot()
+
+touchstone_dir = os.path.join(script_dir, "touchstone")
+os.makedirs(touchstone_dir, exist_ok=True)
+s1p_filename = f"patch_line_{patch_length}mm_{patch_width}mm_{feed_length}mm_{feed_width}mm.s1p"
+s1p_filename = s1p_filename.replace('.', '_').replace('_.s1p', '.s1p')
+s1p_path = os.path.join(touchstone_dir, s1p_filename)
+write_s1p_file(s1p_path, freq, feed_R, s11)
+
+# Required frequency 5.8GHz
+freqInd = freq.shape[0] // 2
+s11_1 = s11[freqInd]
+
+# Find minimum on S11 graph
+freqInd2 = int(np.argmin(np.abs(s11)))
+s11_2 = s11[freqInd2]
+
+# Find patch equivalent resistance R and normalized conductance G
+# at required/actual resonant frequencies
+patchR = (1 + s11_1) / (1 - s11_1) * feed_R
+patchG_norm = (1 - s11_1) / (1 + s11_1)
+
+patchR2 = (1 + s11_2) / (1 - s11_2) * feed_R
+patchG2_norm = (1 - s11_2) / (1 + s11_2)
+
+# ##################################
+# Plot Smith Chart
+# ##################################
+if draw_smith_chart:
+    ax, meta = plot_smith_skrf(
+        s11, freq_hz=freq,
+        idx_main=freqInd, idx_res=freqInd2,
+        patch_width_mm=patch_width, patch_length_mm=patch_length,
+        patchR=patchR, patchG=patchG_norm, patchR2=patchR2, patchG2=patchG2_norm,
+    )
+    finalize_plot()
+
+# ###############
+# Plot Ez field
+# ###############
+if draw_Ez_absolute or draw_Ez_snap:
+    fd = read_hdf5_dump(f"{Sim_Path}/Et.h5")
+    E_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+    patch_y_edges = [rect["y1"] for rect in rects_mm] + [rect["y2"] for rect in rects_mm]
+
+if draw_Ez_absolute:
+    # 2D plot with your custom projection
+    pc, info2d = plot_ez_2d(
+        fd, E_fd, z_value=0.0008,
+        func=lambda Ez: np.abs(Ez),
+        func_str="|Ez|",
+        cmap="jet",
+        #clim=(2, 12),
+        #rects_mm=rects_mm,
+        outside_color="lightgray"
+    )
+    finalize_plot()
+
+    # 1D line cut along Y
+    line, info1d = plot_ez_line_y(
+        fd, E_fd, z_value=0.0008,
+        func=lambda Ez: np.abs(Ez),
+        func_str="|Ez|",
+        #clim=(2, 12),
+        x_value=None, y_lines_mm=np.array(patch_y_edges)
+    )
+    finalize_plot()
+
+if draw_Ez_snap:
+    ix, iy1, iz = coord_to_index(x=0, y=feed_pos/1000, z=0.0008, fd=fd)
+    _, iy2, _ = coord_to_index(x=0, y=(-feed_pos-feed_length)/1000, z=0.0008, fd=fd)
+
+    reference_line = E_fd[ix, iy1:iy2, iz, 2]
+    dphi = find_max_ampl_phase(reference_line)
+
+    E_snap = np.real(E_fd * np.exp(-1j * dphi))
+
+    # 2D plot with your custom projection
+    pc, info2d = plot_ez_2d(
+        fd, E_snap, z_value=0.0008,
+        func=lambda Ez: Ez,
+        func_str=f"Ez snapshot (dphi={dphi*180/np.pi:.2f}deg)",
+        cmap="jet",
+        #rects_mm=rects_mm,
+        outside_color="lightgray",
+        #clim=(-12, 4)
+    )
+    finalize_plot()
+
+    # 1D line cut along Y
+    line, info1d = plot_ez_line_y(
+        fd, E_snap, z_value=0.0008,
+        func=lambda Ez: Ez,
+        func_str=f"Ez snapshot (dphi={dphi*180/np.pi:.2f}deg)",
+        #clim=(-12, 4),
+        x_value=None,
+        y_lines_mm=np.array(patch_y_edges)
+    )
+    finalize_plot()
+
+if draw_Js_absolute or draw_Jx or draw_Jy:
+    fd = read_hdf5_dump(f"{Sim_Path}/Jt.h5")
+    J_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+
+if draw_Js_absolute:
+    # 2D plot with your custom projection
+    pc, info2d = plot_js_2d(
+        fd, J_fd, z_value=substrate_thickness/1000,
+        func=lambda Jx, Jy, Jz: np.sqrt((Jx * np.conj(Jx) + Jy * np.conj(Jy)).real),
+        func_str="|Js|",
+        cmap="jet",
+        #clim=(0, 50)
+    )
+    finalize_plot()
+
+if draw_Jx:
+    # 2D plot with your custom projection
+    pc, info2d = plot_js_2d(
+        fd, J_fd, z_value=substrate_thickness/1000,
+        func=lambda Jx, Jy, Jz: np.abs(Jx),
+        func_str="|Jx|",
+        cmap="jet",
+        #clim=(0, 50)
+    )
+    finalize_plot()
+
+if draw_Jy:
+    # 2D plot with your custom projection
+    pc, info2d = plot_js_2d(
+        fd, J_fd, z_value=substrate_thickness/1000,
+        func=lambda Jx, Jy, Jz: np.abs(Jy),
+        func_str="|Jy|",
+        cmap="jet",
+        #clim=(0, 50)
+    )
+    finalize_plot()
+
+
+# ################
+# Plot Directivity
+# ################
+if draw_directivety_polar or draw_directivity_db:
+    theta = np.arange(-180.0, 180.0, 2.0)
+    phi = [0., 90.]
+    nf2ff_res = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd], theta, phi, center=[0, 0, 1e-3])
+
+if draw_directivety_polar:
+    plot_directivity_db_polar(theta, nf2ff_res, freq, freqInd)
+    finalize_plot()
+
+if draw_directivity_db:
+    plot_directivity_db(theta, nf2ff_res, freq, freqInd)
+    finalize_plot()
+
+# If you still want to keep those tracking arrays:
+feed_lengths.append(feed_length)
+resistances.append(patchR2)
+conductances.append(patchG2_norm)
+frequencies.append(meta["freq_res_hz"]/1e9 if meta["freq_res_hz"] else None)
 
 if save_to_pdf:
     pdf.close()

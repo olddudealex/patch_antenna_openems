@@ -17,7 +17,7 @@ draw_CAD = 0  # Show 3D model before simulation
 draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
-enable_simulation = 0  # temporary dirs must contain data for plots when enable_simulation=0
+enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
 save_to_pdf = 1  # prints all the result to the pdf, doesn't show any plots interactively
 
 draw_complex_impedance = 1  # Show impedance Re/Im plots - impedance plot
@@ -42,7 +42,7 @@ frequencies = []
 # setup feeding
 feed_length = 0  # mm
 feed_width = 1  # mm
-feed_R = 150  # Ohm
+feed_R = 100  # Ohm
 
 # frequency of interest
 f0 = 5.8e9  # center frequency
@@ -63,7 +63,7 @@ wavelength_substrate = wavelength_freespace / sqrt(substrate_epsR)
 patch_number = 1
 
 # antenna dimensions
-antenna_length_max=wavelength_substrate*patch_number  # This length used for substrate length
+antenna_length_max = wavelength_substrate*patch_number  # This length used for substrate length
 
 # substrate dimensions
 substrate_width = wavelength_freespace
@@ -81,16 +81,16 @@ sim_box = [substrate_width+wavelength_freespace/4*air_gap,
 # sweep parameters
 sweep_number = 1
 
-length_start = 12.7  # mm
-width_start = 20  # mm
+length_start = 12.6  # mm
+width_start = 23  # mm
 
 inset_enable = False
 inset_length_start = 0  # mm
 inset_width = 0  # mm
 
 qwave_match_enable = False
-qwave_length_start = 0 #8.9  # mm
-qwave_width = 0.35  # mm
+qwave_length_start = 0 #8.8  # mm
+qwave_width = 0.55  # mm
 
 width_step = 1  # mm
 length_step = 0  # mm
@@ -105,7 +105,8 @@ for sweep_idx in range(0, sweep_number):
     qwave_length = qwave_length_start + sweep_idx * qwave_length_step
 
     # General parameter setup
-    Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_analysis_{patch_length}_{patch_width}_{inset_length}_{qwave_length}")
+    Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_analysis_{patch_length}_{patch_width}_{inset_length}_"
+                                                   f"{qwave_length}_{feed_R}_{feed_length}")
 
     # FDTD setup
     FDTD = openEMS(NrTS=60000, EndCriteria=1e-5)
@@ -231,8 +232,11 @@ for sweep_idx in range(0, sweep_number):
 
     # directory of the script file itself
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    filename = f"inset_length={inset_length} qwave_length={qwave_length} length={patch_length}mm width={patch_width}mm results.pdf"
-    pdf_path = os.path.join(script_dir, filename)
+    reports_dir = os.path.join(script_dir, "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    filename = (f"inset_length={inset_length} qwave_length={qwave_length} length={patch_length}mm width={patch_width}mm"
+                f" Z0={feed_R}Ohm results.pdf")
+    pdf_path = os.path.join(reports_dir, filename)
     pdf = PdfPages(pdf_path) if save_to_pdf else None
 
     def finalize_plot(pdf=pdf, save_to_pdf=save_to_pdf):
@@ -266,6 +270,13 @@ for sweep_idx in range(0, sweep_number):
     if draw_s11:
         plot_s11(freq, s11_dB)
         finalize_plot()
+
+    touchstone_dir = os.path.join(script_dir, "touchstone")
+    os.makedirs(touchstone_dir, exist_ok=True)
+    s1p_filename = f"patch_1port_{patch_length}mm_{patch_width}mm_Z0={feed_R}Ohm.s1p"
+    s1p_filename = s1p_filename.replace('.', '_').replace('_.s1p', '.s1p')
+    s1p_path = os.path.join(touchstone_dir, s1p_filename)
+    write_s1p_file(s1p_path, freq, feed_R, s11)
 
     # Required frequency 5.8GHz
     freqInd = freq.shape[0] // 2
@@ -364,7 +375,6 @@ for sweep_idx in range(0, sweep_number):
         plot_directivity_db(theta, nf2ff_res, freq, freqInd2)
         finalize_plot()
 
-    # If you still want to keep those tracking arrays:
     lengths.append(patch_length)
     widths.append(patch_width)
     insets_lengths.append(inset_length)
@@ -380,12 +390,14 @@ for sweep_idx in range(0, sweep_number):
 
 # directory of the script file itself
 script_dir = os.path.dirname(os.path.abspath(__file__))
+reports_dir = os.path.join(script_dir, "reports")
+os.makedirs(reports_dir, exist_ok=True)
 filename = (f"Results "
             f"length_start={length_start}mm "
             f"length_step={length_step}mm "
             f"width_start={width_start}mm "
             f"width_step={width_step}mm sweep_number={sweep_number}.pdf")
-pdf_path = os.path.join(script_dir, filename)
+pdf_path = os.path.join(reports_dir, filename)
 pdf = PdfPages(pdf_path) if save_to_pdf else None
 
 plt.figure()

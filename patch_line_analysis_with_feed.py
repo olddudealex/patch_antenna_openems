@@ -23,7 +23,7 @@ draw_CAD = 0  # Show 3D model before simulation
 draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
-enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
+enable_simulation = 0  # temporary dirs must contain data for plots when enable_simulation=0
 save_to_pdf = 1  # prints all the result to the pdf, doesn't show any plots interactively
 
 draw_complex_impedance = 1  # Show impedance Re/Im plots - impedance plot
@@ -92,11 +92,12 @@ CSX = build_csx(substrate_epsR, substrate_kappa)
 FDTD.SetCSX(CSX)
 
 # apply geometry specific mesh lines
-extract_edges_from_stl.main(["./line_array_openEMS_simulation/top_gen_model.stl"])
-mesh = apply_meshlines_from_csv(CSX, prefix="meshlines", scale=1)
+freecad_dir = "./freecad_macro_output"
+extract_edges_from_stl.main([f"{freecad_dir}/top_gen_model.stl"])
+mesh = apply_meshlines_from_csv(CSX, prefix="meshlines/meshlines", scale=1)
 
-extract_edges_from_stl.main(["./line_array_openEMS_simulation/substrate_gen_model.stl"])
-mesh = apply_meshlines_from_csv(CSX, prefix="meshlines", scale=1)
+extract_edges_from_stl.main([f"{freecad_dir}/substrate_gen_model.stl"])
+mesh = apply_meshlines_from_csv(CSX, prefix="meshlines/meshlines", scale=1)
 
 # add a couple of central mesh lines to feed line and patches
 mesh.AddLine('x', [6.3, 25])
@@ -113,8 +114,8 @@ mesh.AddLine('z', [sim_box_start[2], sim_box_stop[2]])
 coord_precision = 3  # down to 0.001mm
 
 #  apply the excitation & resist as a current source
-feed_pos_y = 0.395
-feed_pos_x = 6.3
+feed_pos_y = 0
+feed_pos_x = 8.725
 start = [-feed_width / 2 + feed_pos_x, feed_pos_y, -0.001]
 stop = [feed_width / 2 + feed_pos_x, feed_pos_y + 1.0, substrate_thickness]
 port = FDTD.AddLumpedPort(1, feed_R, start, stop, 'z', 1.0,
@@ -168,9 +169,11 @@ if enable_simulation:
 
 # directory of the script file itself
 script_dir = os.path.dirname(os.path.abspath(__file__))
+reports_dir = os.path.join(script_dir, "reports")
+os.makedirs(reports_dir, exist_ok=True)
 timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 filename = f"{timestamp} results.pdf"
-pdf_path = os.path.join(script_dir, filename)
+pdf_path = os.path.join(reports_dir, filename)
 pdf = PdfPages(pdf_path) if save_to_pdf else None
 
 def finalize_plot(pdf=pdf, save_to_pdf=save_to_pdf):
@@ -247,8 +250,8 @@ if draw_Ez_absolute:
         func=lambda Ez: np.abs(Ez),
         func_str="|Ez|",
         cmap="jet",
-        #clim=(2, 12),
-        outside_color="lightgray"
+        outside_color=None,
+        clim=(4.8, 5.3)
     )
     finalize_plot()
 
@@ -258,7 +261,7 @@ if draw_Ez_absolute:
         func=lambda Ez: np.abs(Ez),
         func_str="|Ez|",
         #clim=(2, 12),
-        x_value=25
+        x_value=0.008725
     )
     finalize_plot()
 
@@ -266,21 +269,21 @@ if draw_Ez_snap:
     # 2D plot with your custom projection
     pc, info2d = plot_ez_2d(
         fd, real(E_fd), z_value=0.0008,
-        func=lambda Ez: Ez,
+        func=lambda Ez: np.real(Ez),
         func_str=f"Real E_fd",
         cmap="jet",
-        outside_color="lightgray"
-        #clim=(-12, 4)
+        outside_color=None,
+        clim=(4.8, 5.3)
     )
     finalize_plot()
 
     # 1D line cut along Y
     line, info1d = plot_ez_line_y(
         fd, real(E_fd), z_value=0.0008,
-        func=lambda Ez: Ez,
+        func=lambda Ez: np.real(Ez),
         func_str=f"Real E_fd",
         #clim=(-12, 4),
-        x_value=25
+        x_value=0.008725
     )
     finalize_plot()
 
@@ -328,10 +331,10 @@ if draw_Jy:
 if draw_directivety_polar or draw_directivity_db:
     theta = np.arange(-180.0, 180.0, 2.0)
     phi = [0., 90.]
-    nf2ff_res = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd], theta, phi, center=[25, 99.645, 1e-3])
+    nf2ff_res = nf2ff.CalcNF2FF(Sim_Path, freq[freqInd], theta, phi, center=[20, 85, 1e-3])
 
 if draw_directivety_polar:
-    plot_directivity_db_polar(theta, nf2ff_res, freq, freqInd)
+    plot_directivity_db_polar(theta, nf2ff_res, freq[freqInd])
     finalize_plot()
 
 if draw_directivity_db:

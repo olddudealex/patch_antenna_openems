@@ -42,7 +42,7 @@ frequencies = []
 # setup feeding
 feed_length = 0  # mm
 feed_width = 1  # mm
-feed_R = 150  # Ohm
+feed_R = 100  # Ohm
 
 # frequency of interest
 f0 = 5.8e9  # center frequency
@@ -81,7 +81,7 @@ sim_box = [substrate_width+wavelength_freespace/4*air_gap,
 # sweep parameters
 sweep_number = 1
 
-length_start = 12.7  # mm
+length_start = 13.4  # mm
 width_start = 20  # mm
 
 inset_enable = False
@@ -105,12 +105,11 @@ for sweep_idx in range(0, sweep_number):
     qwave_length = qwave_length_start + sweep_idx * qwave_length_step
 
     # General parameter setup
-    Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_analysis_{patch_length}_{patch_width}_{inset_length}_{qwave_length}")
+    Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_2port_analysis_{patch_length}_{patch_width}_{inset_length}_{qwave_length}")
 
     # FDTD setup
     FDTD = openEMS(NrTS=60000, EndCriteria=1e-5)
     FDTD.SetGaussExcite(f0, fc)
-    #FDTD.SetBoundaryCond(['MUR', 'MUR', 'MUR', 'MUR', 'MUR', 'MUR'])
     FDTD.SetBoundaryCond(['PML_8', 'PML_8', 'PML_8', 'PML_8', 'PML_8', 'PML_8'])
 
     CSX = ContinuousStructure()
@@ -179,10 +178,14 @@ for sweep_idx in range(0, sweep_number):
 
     start = [-feed_width/2, feed_pos, 0]
     stop = [feed_width/2, feed_pos, substrate_thickness]
-    port = FDTD.AddLumpedPort(1, feed_R, start, stop, 'z', 1.0,
-                              priority=5,
-                              #edges2grid='xy'
-                              )
+    port1 = FDTD.AddLumpedPort(1, feed_R, start, stop, 'z', 1.0,
+                               priority=5,
+                               #edges2grid='xy'
+                               )
+
+    start = [-feed_width/2, feed_pos + patch_length, 0]
+    stop = [feed_width/2, feed_pos + patch_length, substrate_thickness]
+    port2 = FDTD.AddLumpedPort(2, feed_R, start, stop, 'z')
 
     # add extra cells to discretize the substrate thickness
     mesh.AddLine('z', linspace(0, substrate_thickness, substrate_cells + 1))
@@ -231,8 +234,10 @@ for sweep_idx in range(0, sweep_number):
 
     # directory of the script file itself
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    reports_dir = os.path.join(script_dir, "reports")
+    os.makedirs(reports_dir, exist_ok=True)
     filename = f"inset_length={inset_length} qwave_length={qwave_length} length={patch_length}mm width={patch_width}mm results.pdf"
-    pdf_path = os.path.join(script_dir, filename)
+    pdf_path = os.path.join(reports_dir, filename)
     pdf = PdfPages(pdf_path) if save_to_pdf else None
 
     def finalize_plot(pdf=pdf, save_to_pdf=save_to_pdf):
@@ -242,13 +247,14 @@ for sweep_idx in range(0, sweep_number):
             plt.close()
 
     freq = np.linspace(f0 - fc, f0 + fc, 401)
-    port.CalcPort(Sim_Path, freq)
+    port1.CalcPort(Sim_Path, freq)
+    port2.CalcPort(Sim_Path, freq)
 
     # ##################################
     # Plot Complex Impedance
     # ##################################
     if draw_complex_impedance:
-        Zin = port.uf_tot / port.if_tot
+        Zin = port1.uf_tot / port1.if_tot
         figure()
         plot(freq / 1e9, np.abs(Zin), 'k-', label='Zin real')
         plot(freq / 1e9, np.imag(Zin), 'r--', label='Zin imag')
@@ -261,11 +267,29 @@ for sweep_idx in range(0, sweep_number):
     # ##################################
     # Plot S11 (dB)
     # ##################################
-    s11 = port.uf_ref / port.uf_inc
+    s11 = port1.uf_ref / port1.uf_inc
     s11_dB = 20.0 * np.log10(np.abs(s11))
     if draw_s11:
         plot_s11(freq, s11_dB)
         finalize_plot()
+
+    # ##################################
+    # Plot S21 (dB)
+    # ##################################
+    s21 = port2.uf_ref / port1.uf_inc
+    s21_dB = 20.0 * np.log10(np.abs(s21))
+    if draw_s11:
+        plot_s11(freq, s21_dB, title="Forward Coefficient $S_{21}$")
+        finalize_plot()
+
+    s12 = s21  # symmetrical
+    s22 = s11  # symmetrical
+    touchstone_dir = os.path.join(script_dir, "touchstone")
+    os.makedirs(touchstone_dir, exist_ok=True)
+    s2p_filename = f"patch_2port_{patch_length}mm_{patch_width}mm_Z0={feed_R}Ohm.s2p"
+    s2p_filename = s2p_filename.replace('.', '_').replace('_.s2p', '.s2p')
+    s2p_path = os.path.join(touchstone_dir, s2p_filename)
+    write_s2p_file(s2p_path, freq, feed_R, s11, s21, s12, s22)
 
     # Required frequency 5.8GHz
     freqInd = freq.shape[0] // 2
@@ -380,12 +404,14 @@ for sweep_idx in range(0, sweep_number):
 
 # directory of the script file itself
 script_dir = os.path.dirname(os.path.abspath(__file__))
+reports_dir = os.path.join(script_dir, "reports")
+os.makedirs(reports_dir, exist_ok=True)
 filename = (f"Results "
             f"length_start={length_start}mm "
             f"length_step={length_step}mm "
             f"width_start={width_start}mm "
             f"width_step={width_step}mm sweep_number={sweep_number}.pdf")
-pdf_path = os.path.join(script_dir, filename)
+pdf_path = os.path.join(reports_dir, filename)
 pdf = PdfPages(pdf_path) if save_to_pdf else None
 
 plt.figure()
