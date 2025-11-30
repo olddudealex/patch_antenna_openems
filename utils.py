@@ -833,8 +833,7 @@ def plot_directivity_3d_interactive(theta, phi, nf2ff_res, freq, output_path):
         surfacecolor=D_dB,
         colorscale='Jet',
         colorbar=dict(
-            title='Directivity (dBi)',
-            titleside='right',
+            title=dict(text='Directivity (dBi)', side='right'),
             tickmode='linear',
             tick0=D_dB.min(),
             dtick=(D_dB.max() - D_dB.min()) / 10
