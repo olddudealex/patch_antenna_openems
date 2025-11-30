@@ -770,6 +770,105 @@ def plot_directivity_3d(theta, phi, nf2ff_res, freq):
     plt.tight_layout()
 
 
+def plot_directivity_3d_interactive(theta, phi, nf2ff_res, freq, output_path):
+    """
+    Plot interactive 3D directivity pattern using Plotly and save as HTML.
+
+    Parameters
+    ----------
+    theta : array-like
+        Theta angle values in degrees (elevation, typically 0 to 180).
+    phi : array-like
+        Phi angle values in degrees (azimuth, typically 0 to 360).
+    nf2ff_res : object
+        Result object from openEMS CalcNF2FF.
+        Must provide: P_rad, Prad, Dmax.
+    freq : float
+        Frequency for plot caption.
+    output_path : str
+        Path to save the HTML file (e.g., "pattern_3d.html").
+    """
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        print("Warning: plotly not installed. Skipping interactive 3D plot.")
+        print("Install with: pip install plotly")
+        return
+
+    # Angular power distribution and total radiated power
+    # P_rad shape: (nfreq, ntheta, nphi)
+    P_rad = np.abs(nf2ff_res.P_rad[0])       # ensure non-negative
+    Prad_tot = np.real(nf2ff_res.Prad[0])    # scalar
+
+    # Directivity in linear scale: D = 4π * P_rad / Prad
+    D_lin = 4.0 * np.pi * P_rad / Prad_tot
+
+    # Avoid log10(0) -> -inf
+    D_lin = np.maximum(D_lin, 1e-20)
+
+    # Convert to dB
+    D_dB = 10.0 * np.log10(D_lin)
+
+    # Create meshgrid for theta and phi
+    THETA, PHI = np.meshgrid(theta, phi, indexing='ij')
+
+    # Convert spherical coordinates to Cartesian
+    theta_rad = np.deg2rad(THETA)
+    phi_rad = np.deg2rad(PHI)
+
+    # Use linear directivity as radius
+    R = D_lin
+
+    X = R * np.sin(theta_rad) * np.cos(phi_rad)
+    Y = R * np.sin(theta_rad) * np.sin(phi_rad)
+    Z = R * np.cos(theta_rad)
+
+    Dmax_dB = 10 * np.log10(np.max(D_lin))
+
+    # Create interactive 3D surface plot
+    fig = go.Figure(data=[go.Surface(
+        x=X,
+        y=Y,
+        z=Z,
+        surfacecolor=D_dB,
+        colorscale='Jet',
+        colorbar=dict(
+            title='Directivity (dBi)',
+            titleside='right',
+            tickmode='linear',
+            tick0=D_dB.min(),
+            dtick=(D_dB.max() - D_dB.min()) / 10
+        ),
+        hovertemplate='<b>Directivity</b>: %{surfacecolor:.2f} dBi<br>' +
+                      '<b>X</b>: %{x:.3f}<br>' +
+                      '<b>Y</b>: %{y:.3f}<br>' +
+                      '<b>Z</b>: %{z:.3f}<br>' +
+                      '<extra></extra>'
+    )])
+
+    # Update layout for better visualization
+    fig.update_layout(
+        title=f'Interactive 3D Directivity Pattern<br>' +
+              f'f = {freq/1e9:.3f} GHz, Dmax = {Dmax_dB:.2f} dBi',
+        scene=dict(
+            xaxis_title='X',
+            yaxis_title='Y',
+            zaxis_title='Z',
+            aspectmode='data',
+            camera=dict(
+                eye=dict(x=1.5, y=1.5, z=1.2)
+            )
+        ),
+        width=1000,
+        height=800,
+        font=dict(size=12)
+    )
+
+    # Save as HTML
+    fig.write_html(output_path)
+    print(f"[OK] Saved interactive 3D plot to: {output_path}")
+
+
 def plot_s11(freq: np.ndarray,
              s11_dB: np.ndarray,
              *,

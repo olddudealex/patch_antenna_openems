@@ -396,6 +396,12 @@ for sweep_idx in range(0, sweep_number):
         plot_directivity_3d(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd2])
         finalize_plot()
 
+        # Save interactive HTML version
+        html_filename = (f"inset_length={inset_length} qwave_length={qwave_length} "
+                        f"length={patch_length}mm width={patch_width}mm 3D_pattern.html")
+        html_path = os.path.join(reports_dir, html_filename)
+        plot_directivity_3d_interactive(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd2], html_path)
+
     # If you still want to keep those tracking arrays:
     lengths.append(patch_length)
     widths.append(patch_width)

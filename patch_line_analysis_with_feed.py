@@ -354,6 +354,11 @@ if draw_3d_pattern:
     plot_directivity_3d(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd])
     finalize_plot()
 
+    # Save interactive HTML version
+    html_filename = f"{timestamp} 3D_pattern.html"
+    html_path = os.path.join(reports_dir, html_filename)
+    plot_directivity_3d_interactive(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd], html_path)
+
 if save_to_pdf:
     pdf.close()
 else:

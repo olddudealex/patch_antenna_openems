@@ -441,6 +441,12 @@ if draw_3d_pattern:
     plot_directivity_3d(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd])
     finalize_plot()
 
+    # Save interactive HTML version
+    html_filename = (f"feed_length={feed_length} length={patch_length}mm width={patch_width}mm "
+                    f"patch_number={patch_number} 3D_pattern.html")
+    html_path = os.path.join(reports_dir, html_filename)
+    plot_directivity_3d_interactive(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd], html_path)
+
 # If you still want to keep those tracking arrays:
 feed_lengths.append(feed_length)
 resistances.append(patchR2)
