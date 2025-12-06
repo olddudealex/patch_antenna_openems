@@ -1385,21 +1385,43 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
 
         vtk_files.append(filepath + '.vtr')  # pyevtk adds .vtr extension
 
-    # Copy STL geometry files if provided
+    # Copy and scale STL geometry files if provided
     stl_files = []
     if stl_dir is not None:
-        import shutil
-        stl_names = ['top_gen_model.stl', 'substrate_gen_model.stl', 'bottom_gen_model.stl']
+        try:
+            import trimesh
+            stl_names = ['top_gen_model.stl', 'substrate_gen_model.stl', 'bottom_gen_model.stl']
 
-        for stl_name in stl_names:
-            src_path = os.path.join(stl_dir, stl_name)
-            if os.path.exists(src_path):
-                dst_path = os.path.join(output_dir, stl_name)
-                shutil.copy2(src_path, dst_path)
-                stl_files.append(stl_name)
-                print(f"[OK] Copied geometry: {stl_name}")
-            else:
-                print(f"[WARNING] STL file not found: {src_path}")
+            # Scale factor: STL files are in mm, VTK data is in m
+            scale_factor = 1e-3
+
+            for stl_name in stl_names:
+                src_path = os.path.join(stl_dir, stl_name)
+                if os.path.exists(src_path):
+                    # Load STL and scale to meters
+                    mesh = trimesh.load_mesh(src_path)
+                    mesh.apply_scale(scale_factor)
+
+                    # Save scaled STL
+                    dst_path = os.path.join(output_dir, stl_name)
+                    mesh.export(dst_path)
+
+                    stl_files.append(stl_name)
+                    print(f"[OK] Copied and scaled geometry: {stl_name} (mm → m)")
+                else:
+                    print(f"[WARNING] STL file not found: {src_path}")
+        except ImportError:
+            print("[WARNING] trimesh not installed, cannot scale STL files")
+            print("[WARNING] Install with: pip install trimesh")
+            # Fallback: copy without scaling
+            import shutil
+            for stl_name in stl_names:
+                src_path = os.path.join(stl_dir, stl_name)
+                if os.path.exists(src_path):
+                    dst_path = os.path.join(output_dir, stl_name)
+                    shutil.copy2(src_path, dst_path)
+                    stl_files.append(stl_name)
+                    print(f"[OK] Copied geometry (unscaled): {stl_name}")
 
     # Generate PVD file for easy loading in ParaView
     pvd_filename = f"E_field_{target_freq/1e9:.1f}GHz_animation.pvd"
