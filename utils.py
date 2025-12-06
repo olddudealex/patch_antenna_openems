@@ -1350,6 +1350,7 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
         # gridToVTK needs coordinates and scalar/vector data
 
         # Scalar fields dictionary
+        # Note: Vector fields in pyevtk are specified as tuples in pointData
         pointData = {
             'E_magnitude': np.ascontiguousarray(E_mag),
             'Ex_real': np.ascontiguousarray(Ex_phase),
@@ -1361,10 +1362,7 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
             'Ex_phase_deg': np.ascontiguousarray(Ex_phase_angle),
             'Ey_phase_deg': np.ascontiguousarray(Ey_phase_angle),
             'Ez_phase_deg': np.ascontiguousarray(Ez_phase_angle),
-        }
-
-        # Vector field: E = (Ex, Ey, Ez) at current phase
-        vectorData = {
+            # Vector field: E = (Ex, Ey, Ez) at current phase
             'E_vector': (
                 np.ascontiguousarray(Ex_phase),
                 np.ascontiguousarray(Ey_phase),
@@ -1376,8 +1374,7 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
         gridToVTK(
             filepath,
             x, y, z,
-            pointData=pointData,
-            vectorData=vectorData
+            pointData=pointData
         )
 
         vtk_files.append(filepath + '.vtr')  # pyevtk adds .vtr extension
