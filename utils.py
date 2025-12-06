@@ -1379,7 +1379,25 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
 
         vtk_files.append(filepath + '.vtr')  # pyevtk adds .vtr extension
 
+    # Generate PVD file for easy loading in ParaView
+    pvd_filename = f"E_field_{target_freq/1e9:.1f}GHz_animation.pvd"
+    pvd_path = os.path.join(output_dir, pvd_filename)
+
+    with open(pvd_path, 'w') as f:
+        f.write('<?xml version="1.0"?>\n')
+        f.write('<VTKFile type="Collection" version="0.1">\n')
+        f.write('  <Collection>\n')
+
+        for phase_deg in phases_deg:
+            # Use phase as timestep value
+            filename = f"E_field_{target_freq/1e9:.1f}GHz_phase{int(phase_deg):03d}.vtr"
+            f.write(f'    <DataSet timestep="{phase_deg}" file="{filename}"/>\n')
+
+        f.write('  </Collection>\n')
+        f.write('</VTKFile>\n')
+
     print(f"[OK] Generated {len(vtk_files)} VTK files in: {output_dir}")
-    print(f"[OK] Load in ParaView as time series for phase animation")
+    print(f"[OK] Generated PVD file: {pvd_filename}")
+    print(f"[OK] In ParaView: File → Open → {pvd_filename}")
 
     return vtk_files
