@@ -1248,12 +1248,14 @@ def write_s1p_file(name, freq, Z0, s11):
 
 
 def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
-                                   phase_step_deg=10, grid_coords=None):
+                                   phase_step_deg=10, grid_coords=None,
+                                   stl_dir=None):
     """
     Export E-field at target frequency to VTK files with phase animation.
 
     Creates multiple VTK files showing the E-field oscillating through different
-    phases, suitable for animation in ParaView.
+    phases, suitable for animation in ParaView. Optionally includes STL geometry
+    files for context visualization.
 
     Parameters
     ----------
@@ -1268,6 +1270,10 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
         Smaller values = smoother animation but more files
     grid_coords : tuple of arrays, optional
         (x, y, z) coordinate arrays. If None, read from HDF5.
+    stl_dir : str, optional
+        Directory containing STL geometry files to include in visualization.
+        If provided, will copy STL files and create comprehensive PVD.
+        Expected files: top_gen_model.stl, substrate_gen_model.stl, bottom_gen_model.stl
 
     Returns
     -------
@@ -1379,6 +1385,22 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
 
         vtk_files.append(filepath + '.vtr')  # pyevtk adds .vtr extension
 
+    # Copy STL geometry files if provided
+    stl_files = []
+    if stl_dir is not None:
+        import shutil
+        stl_names = ['top_gen_model.stl', 'substrate_gen_model.stl', 'bottom_gen_model.stl']
+
+        for stl_name in stl_names:
+            src_path = os.path.join(stl_dir, stl_name)
+            if os.path.exists(src_path):
+                dst_path = os.path.join(output_dir, stl_name)
+                shutil.copy2(src_path, dst_path)
+                stl_files.append(stl_name)
+                print(f"[OK] Copied geometry: {stl_name}")
+            else:
+                print(f"[WARNING] STL file not found: {src_path}")
+
     # Generate PVD file for easy loading in ParaView
     pvd_filename = f"E_field_{target_freq/1e9:.1f}GHz_animation.pvd"
     pvd_path = os.path.join(output_dir, pvd_filename)
@@ -1388,15 +1410,25 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
         f.write('<VTKFile type="Collection" version="0.1">\n')
         f.write('  <Collection>\n')
 
+        # Add E-field animation (time-varying)
         for phase_deg in phases_deg:
             # Use phase as timestep value
             filename = f"E_field_{target_freq/1e9:.1f}GHz_phase{int(phase_deg):03d}.vtr"
-            f.write(f'    <DataSet timestep="{phase_deg}" file="{filename}"/>\n')
+            f.write(f'    <DataSet timestep="{phase_deg}" group="E-field" part="0" file="{filename}"/>\n')
+
+        # Add STL geometry (static - appears at all timesteps)
+        if stl_files:
+            for i, stl_name in enumerate(stl_files, start=1):
+                f.write(f'    <!-- Static geometry: {stl_name} -->\n')
+                for phase_deg in phases_deg:
+                    f.write(f'    <DataSet timestep="{phase_deg}" group="Geometry" part="{i}" file="{stl_name}"/>\n')
 
         f.write('  </Collection>\n')
         f.write('</VTKFile>\n')
 
     print(f"[OK] Generated {len(vtk_files)} VTK files in: {output_dir}")
+    if stl_files:
+        print(f"[OK] Included {len(stl_files)} STL geometry files")
     print(f"[OK] Generated PVD file: {pvd_filename}")
     print(f"[OK] In ParaView: File → Open → {pvd_filename}")
 

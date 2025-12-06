@@ -23,7 +23,7 @@ draw_CAD = 0  # Show 3D model before simulation
 draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
-enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
+enable_simulation = 0  # temporary dirs must contain data for plots when enable_simulation=0
 save_to_pdf = 1  # prints all the result to the pdf, doesn't show any plots interactively
 
 draw_complex_impedance = 1  # Show impedance Re/Im plots - impedance plot
@@ -369,7 +369,8 @@ if draw_vtk_field:
         hdf5_path=os.path.join(Sim_Path, 'Et.h5'),
         target_freq=f0,
         output_dir=vtk_dir,
-        phase_step_deg=vtk_phase_step_deg
+        phase_step_deg=vtk_phase_step_deg,
+        stl_dir=freecad_dir  # Include STL geometry for context
     )
 
 if save_to_pdf:
