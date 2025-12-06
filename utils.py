@@ -1245,3 +1245,144 @@ def write_s1p_file(name, freq, Z0, s11):
 
     ntw = rf.Network(frequency=freq, s=S, z0=Z0)
     ntw.write_touchstone(name)
+
+
+def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
+                                   phase_step_deg=10, grid_coords=None):
+    """
+    Export E-field at target frequency to VTK files with phase animation.
+
+    Creates multiple VTK files showing the E-field oscillating through different
+    phases, suitable for animation in ParaView.
+
+    Parameters
+    ----------
+    hdf5_path : str
+        Path to HDF5 field dump file (e.g., 'Et.h5')
+    target_freq : float
+        Target frequency in Hz (e.g., 5.8e9)
+    output_dir : str
+        Directory to save VTK files
+    phase_step_deg : float, optional
+        Phase step in degrees for animation frames (default: 10)
+        Smaller values = smoother animation but more files
+    grid_coords : tuple of arrays, optional
+        (x, y, z) coordinate arrays. If None, read from HDF5.
+
+    Returns
+    -------
+    list of str
+        List of generated VTK file paths
+
+    Notes
+    -----
+    Generates VTK files named: E_field_{freq}GHz_phase{angle}.vtk
+    Each file contains scalar and vector fields for E-field components.
+    Load all files in ParaView as a time series for phase animation.
+
+    Dependencies: pyevtk (pip install pyevtk)
+    """
+    try:
+        from pyevtk.hl import gridToVTK
+    except ImportError:
+        print("Warning: pyevtk not installed. Skipping VTK export.")
+        print("Install with: pip install pyevtk")
+        return []
+
+    import os
+
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Read HDF5 field dump
+    print(f"[VTK] Reading field dump from: {hdf5_path}")
+    field_dump = read_hdf5_dump(hdf5_path)
+
+    # Get grid coordinates
+    if grid_coords is None:
+        x, y, z = field_dump.x, field_dump.y, field_dump.z
+    else:
+        x, y, z = grid_coords
+
+    # Convert time-domain to frequency-domain at target frequency
+    print(f"[VTK] Converting to frequency domain at {target_freq/1e9:.3f} GHz...")
+    E_fd = td_to_fd_fft(field_dump.F_td, field_dump.time, target_freq)
+
+    # E_fd shape: (Nx, Ny, Nz, 3) - complex values
+    Ex_fd = E_fd[:, :, :, 0]
+    Ey_fd = E_fd[:, :, :, 1]
+    Ez_fd = E_fd[:, :, :, 2]
+
+    # Generate phase steps (0 to 360 degrees)
+    phases_deg = np.arange(0, 360, phase_step_deg)
+    vtk_files = []
+
+    print(f"[VTK] Generating {len(phases_deg)} VTK files with {phase_step_deg}° phase steps...")
+
+    for phase_deg in phases_deg:
+        # Apply phase rotation: E(t) = Re[E_fd * exp(j*phase)]
+        phase_rad = np.deg2rad(phase_deg)
+        phase_factor = np.exp(1j * phase_rad)
+
+        # E-field components at this phase
+        Ex_phase = np.real(Ex_fd * phase_factor)
+        Ey_phase = np.real(Ey_fd * phase_factor)
+        Ez_phase = np.real(Ez_fd * phase_factor)
+
+        # Compute magnitudes
+        E_mag = np.sqrt(Ex_phase**2 + Ey_phase**2 + Ez_phase**2)
+        Ex_mag = np.abs(Ex_fd)
+        Ey_mag = np.abs(Ey_fd)
+        Ez_mag = np.abs(Ez_fd)
+
+        # Compute phases (for reference)
+        Ex_phase_angle = np.angle(Ex_fd, deg=True)
+        Ey_phase_angle = np.angle(Ey_fd, deg=True)
+        Ez_phase_angle = np.angle(Ez_fd, deg=True)
+
+        # File name
+        freq_str = f"{target_freq/1e9:.1f}GHz"
+        phase_str = f"phase{int(phase_deg):03d}"
+        filename = f"E_field_{freq_str}_{phase_str}"
+        filepath = os.path.join(output_dir, filename)
+
+        # Prepare data for VTK (pyevtk expects Fortran order)
+        # gridToVTK needs coordinates and scalar/vector data
+
+        # Scalar fields dictionary
+        pointData = {
+            'E_magnitude': np.ascontiguousarray(E_mag),
+            'Ex_real': np.ascontiguousarray(Ex_phase),
+            'Ey_real': np.ascontiguousarray(Ey_phase),
+            'Ez_real': np.ascontiguousarray(Ez_phase),
+            'Ex_magnitude': np.ascontiguousarray(Ex_mag),
+            'Ey_magnitude': np.ascontiguousarray(Ey_mag),
+            'Ez_magnitude': np.ascontiguousarray(Ez_mag),
+            'Ex_phase_deg': np.ascontiguousarray(Ex_phase_angle),
+            'Ey_phase_deg': np.ascontiguousarray(Ey_phase_angle),
+            'Ez_phase_deg': np.ascontiguousarray(Ez_phase_angle),
+        }
+
+        # Vector field: E = (Ex, Ey, Ez) at current phase
+        vectorData = {
+            'E_vector': (
+                np.ascontiguousarray(Ex_phase),
+                np.ascontiguousarray(Ey_phase),
+                np.ascontiguousarray(Ez_phase)
+            )
+        }
+
+        # Write VTK file
+        gridToVTK(
+            filepath,
+            x, y, z,
+            pointData=pointData,
+            vectorData=vectorData
+        )
+
+        vtk_files.append(filepath + '.vtr')  # pyevtk adds .vtr extension
+
+    print(f"[OK] Generated {len(vtk_files)} VTK files in: {output_dir}")
+    print(f"[OK] Load in ParaView as time series for phase animation")
+
+    return vtk_files

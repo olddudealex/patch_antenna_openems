@@ -32,6 +32,9 @@ draw_directivety_polar = 1  # Show directivity polar plot    - radiation pattern
 draw_directivity_db = 1  # Show directivity dB plot    - radiation pattern
 draw_3d_pattern = 1  # Show antenna 3D pattern     - radiation pattern
 
+draw_vtk_field = 1  # Export E-field to VTK for ParaView visualization
+vtk_phase_step_deg = 10  # Phase step in degrees for VTK animation (default: 10)
+
 # patch width (resonant length) in x-direction
 lengths = []
 widths = []
@@ -393,6 +396,16 @@ for sweep_idx in range(0, sweep_number):
                         f"length={patch_length}mm width={patch_width}mm Z0={feed_R}Ohm 3D_pattern.html")
         html_path = os.path.join(reports_dir, html_filename)
         plot_directivity_3d_interactive(theta_3d, phi_3d, nf2ff_res_3d, freq[freqInd2], html_path)
+
+    # Export E-field to VTK for ParaView visualization
+    if draw_vtk_field:
+        vtk_dir = os.path.join(reports_dir, f"vtk_inset={inset_length}_qwave={qwave_length}_L={patch_length}mm_W={patch_width}mm")
+        export_efield_vtk_at_frequency(
+            hdf5_path=os.path.join(Sim_Path, 'Et.h5'),
+            target_freq=f0,
+            output_dir=vtk_dir,
+            phase_step_deg=vtk_phase_step_deg
+        )
 
     lengths.append(patch_length)
     widths.append(patch_width)
