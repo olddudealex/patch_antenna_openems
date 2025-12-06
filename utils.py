@@ -1306,7 +1306,7 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
 
     # Convert time-domain to frequency-domain at target frequency
     print(f"[VTK] Converting to frequency domain at {target_freq/1e9:.3f} GHz...")
-    E_fd = td_to_fd_fft(field_dump.F_td, field_dump.time, target_freq)
+    E_fd = td_to_fd_fft(field_dump.F_td, field_dump.dt, target_freq)
 
     # E_fd shape: (Nx, Ny, Nz, 3) - complex values
     Ex_fd = E_fd[:, :, :, 0]
