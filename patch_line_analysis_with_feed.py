@@ -23,7 +23,7 @@ draw_CAD = 0  # Show 3D model before simulation
 draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
-enable_simulation = 0  # temporary dirs must contain data for plots when enable_simulation=0
+enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
 save_to_pdf = 1  # prints all the result to the pdf, doesn't show any plots interactively
 
 draw_complex_impedance = 1  # Show impedance Re/Im plots - impedance plot
@@ -79,7 +79,7 @@ air_gap = 2
 
 # size of the simulation box
 sim_box_start = [-20, -20, -10]
-sim_box_stop = [58, 200, 25]
+sim_box_stop = [60, 200, 25]
 
 # General parameter setup
 Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_line_analysis")
@@ -135,7 +135,7 @@ mesh.AddLine('y', [feed_pos_y, feed_pos_y - res, feed_pos_y + res])
 mesh.SmoothMeshLines('all', mesh_res, 1.4)
 
 # Add the nf2ff recording box
-nf2ff = FDTD.CreateNF2FFBox(start=[2, 0, -2], stop=[36, 178, 15])
+nf2ff = FDTD.CreateNF2FFBox(start=[-15, -15, -2], stop=[55, 185, 17])
 
 # Add the dumping of E field
 et = CSX.AddDump('Et', dump_type=0, file_type=1)
