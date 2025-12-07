@@ -1437,22 +1437,18 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
         for phase_deg in phases_deg:
             # Use phase as timestep value
             filename = f"E_field_{target_freq/1e9:.1f}GHz_phase{int(phase_deg):03d}.vtr"
-            f.write(f'    <DataSet timestep="{phase_deg}" group="E-field" part="0" file="{filename}"/>\n')
-
-        # Add STL geometry (static - appears at all timesteps)
-        if stl_files:
-            for i, stl_name in enumerate(stl_files, start=1):
-                f.write(f'    <!-- Static geometry: {stl_name} -->\n')
-                for phase_deg in phases_deg:
-                    f.write(f'    <DataSet timestep="{phase_deg}" group="Geometry" part="{i}" file="{stl_name}"/>\n')
+            f.write(f'    <DataSet timestep="{phase_deg}" file="{filename}"/>\n')
 
         f.write('  </Collection>\n')
         f.write('</VTKFile>\n')
 
     print(f"[OK] Generated {len(vtk_files)} VTK files in: {output_dir}")
     if stl_files:
-        print(f"[OK] Included {len(stl_files)} STL geometry files")
+        print(f"[OK] Copied {len(stl_files)} scaled STL geometry files")
+        print(f"[OK] Load STL files separately in ParaView for geometry context")
     print(f"[OK] Generated PVD file: {pvd_filename}")
-    print(f"[OK] In ParaView: File → Open → {pvd_filename}")
+    print(f"[OK] In ParaView: File → Open → {pvd_filename} (E-field animation)")
+    if stl_files:
+        print(f"[OK]              File → Open → *.stl (geometry)")
 
     return vtk_files
