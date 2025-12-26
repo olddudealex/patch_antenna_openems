@@ -58,55 +58,6 @@ def read_hdf5_dump(path: str, tick_period: float = 1.0) -> FieldDump:
 
 # ---------------------- TD → FD CONVERSION ----------------------
 
-def td_to_fd_dft(E_td: np.ndarray,
-                 time: Optional[np.ndarray],
-                 dt: Optional[float],
-                 f_hz: float) -> np.ndarray:
-    """
-    Single-frequency DFT of the time-domain field.
-
-    Parameters
-    ----------
-    E_td : np.ndarray
-        Shape (Nt, Nx, Ny, Nz, 3).
-    time : np.ndarray | None
-        If provided, used directly (supports irregular spacing).
-    dt : float | None
-        If `time` is None, uniform sample period (seconds).
-    f_hz : float
-        Target frequency.
-
-    Returns
-    -------
-    np.ndarray
-        Complex spectrum at f_hz, shape (Nx, Ny, Nz, 3).
-
-    Notes
-    -----
-    Uses Riemann-sum DFT: sum_t E(t) * exp(-j2π f t) * Δt
-    """
-    if E_td.ndim != 5 or E_td.shape[-1] != 3:
-        raise ValueError("E_td must have shape (Nt, Nx, Ny, Nz, 3).")
-
-    Nt = E_td.shape[0]
-    if time is None:
-        if dt is None:
-            raise ValueError("Provide either `time` or `dt`.")
-        time = np.arange(Nt, dtype=float) * float(dt)
-        delta_t = float(dt)
-    else:
-        time = np.asarray(time, dtype=float)
-        if time.shape[0] != Nt:
-            raise ValueError("`time` length does not match E_td.")
-        # approximate Δt if nonuniform
-        delta_t = float(np.median(np.diff(time)))
-
-    t = time.reshape(Nt, 1, 1, 1, 1)
-    kernel = np.exp(-1j * 2.0 * np.pi * f_hz * t)
-    E_fd = np.sum(E_td * kernel, axis=0) * delta_t  # (Nx, Ny, Nz, 3)
-    return E_fd
-
-
 def td_to_fd_fft(E_td: np.ndarray, dt: float, f_hz: float) -> np.ndarray:
     """
     FFT-based pick of the nearest positive-frequency bin.
@@ -641,9 +592,133 @@ def plot_directivity_db_polar(theta, nf2ff_res, freq):
     plt.tight_layout()
 
 
+def calculate_beamwidth_3dB(theta, D_dB):
+    """
+    Calculate -3dB beamwidth (HPBW - Half Power Beamwidth).
+
+    Parameters
+    ----------
+    theta : array-like
+        Angle values in degrees.
+    D_dB : array-like
+        Directivity in dB.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys: 'beamwidth', 'peak_angle', 'left_angle', 'right_angle', 'peak_value'
+        Returns None values if beamwidth cannot be calculated.
+    """
+    # Find main lobe peak
+    idx_max = np.argmax(D_dB)
+    peak_value = D_dB[idx_max]
+    peak_angle = theta[idx_max]
+    threshold = peak_value - 3.0
+
+    # Search for -3dB points on left side of peak
+    left_angle = None
+    for i in range(idx_max, -1, -1):
+        if D_dB[i] <= threshold:
+            # Interpolate for more accurate angle
+            if i < idx_max:
+                left_angle = np.interp(threshold, [D_dB[i], D_dB[i+1]], [theta[i], theta[i+1]])
+            else:
+                left_angle = theta[i]
+            break
+
+    # Search for -3dB points on right side of peak
+    right_angle = None
+    for i in range(idx_max, len(D_dB)):
+        if D_dB[i] <= threshold:
+            # Interpolate for more accurate angle
+            if i > idx_max:
+                right_angle = np.interp(threshold, [D_dB[i-1], D_dB[i]], [theta[i-1], theta[i]])
+            else:
+                right_angle = theta[i]
+            break
+
+    # Calculate beamwidth
+    beamwidth = None
+    if left_angle is not None and right_angle is not None:
+        beamwidth = abs(right_angle - left_angle)
+
+    return {
+        'beamwidth': beamwidth,
+        'peak_angle': peak_angle,
+        'left_angle': left_angle,
+        'right_angle': right_angle,
+        'peak_value': peak_value,
+        'threshold': threshold
+    }
+
+
+def find_side_lobe_level(theta, D_dB, beamwidth_info):
+    """
+    Find the maximum side lobe level (excluding main lobe).
+
+    Parameters
+    ----------
+    theta : array-like
+        Angle values in degrees.
+    D_dB : array-like
+        Directivity in dB.
+    beamwidth_info : dict
+        Output from calculate_beamwidth_3dB containing peak and beamwidth info.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys: 'sll_value', 'sll_angle', 'sll_relative'
+        Returns None values if no side lobe is found.
+    """
+    from scipy.signal import find_peaks
+
+    # Find all local maxima
+    peaks, _ = find_peaks(D_dB, prominence=1.0)  # require at least 1dB prominence
+
+    if len(peaks) == 0:
+        return {'sll_value': None, 'sll_angle': None, 'sll_relative': None}
+
+    # Exclude peaks within main lobe region
+    peak_angle = beamwidth_info['peak_angle']
+    left_angle = beamwidth_info['left_angle']
+    right_angle = beamwidth_info['right_angle']
+
+    side_lobe_peaks = []
+    if left_angle is not None and right_angle is not None:
+        for idx in peaks:
+            angle = theta[idx]
+            # Exclude if within main lobe
+            if angle < left_angle or angle > right_angle:
+                side_lobe_peaks.append(idx)
+    else:
+        # If beamwidth not found, exclude peaks close to main peak
+        for idx in peaks:
+            if abs(theta[idx] - peak_angle) > 10:  # at least 10 degrees away
+                side_lobe_peaks.append(idx)
+
+    # Find maximum side lobe
+    if len(side_lobe_peaks) > 0:
+        side_lobe_values = D_dB[side_lobe_peaks]
+        max_sll_idx = side_lobe_peaks[np.argmax(side_lobe_values)]
+        sll_value = D_dB[max_sll_idx]
+        sll_angle = theta[max_sll_idx]
+        sll_relative = sll_value - beamwidth_info['peak_value']
+    else:
+        sll_value = None
+        sll_angle = None
+        sll_relative = None
+
+    return {
+        'sll_value': sll_value,
+        'sll_angle': sll_angle,
+        'sll_relative': sll_relative
+    }
+
+
 def plot_directivity_db(theta, nf2ff_res, freq):
     """
-    Plot directivity in dBi (Cartesian x–y plot).
+    Plot directivity in dBi (Cartesian x–y plot) with beamwidth and side lobe analysis.
 
     Parameters
     ----------
@@ -672,15 +747,53 @@ def plot_directivity_db(theta, nf2ff_res, freq):
     D_xz = np.squeeze(D_dB[:, 0])
     D_yz = np.squeeze(D_dB[:, 1])
 
-    plt.figure()
+    # Calculate beamwidth and side lobe levels
+    bw_xz = calculate_beamwidth_3dB(theta, D_xz)
+    bw_yz = calculate_beamwidth_3dB(theta, D_yz)
+
+    sll_xz = find_side_lobe_level(theta, D_xz, bw_xz)
+    sll_yz = find_side_lobe_level(theta, D_yz, bw_yz)
+
+    plt.figure(figsize=(10, 6))
     plt.plot(theta, np.squeeze(D_xz), "k-", linewidth=2, label="xz-plane")
     plt.plot(theta, np.squeeze(D_yz), "r--", linewidth=2, label="yz-plane")
+
+    # Add -3dB reference lines and beamwidth markers for xz-plane
+    if bw_xz['beamwidth'] is not None:
+        plt.axhline(y=bw_xz['threshold'], color='gray', linestyle=':', alpha=0.5, linewidth=1)
+        plt.plot([bw_xz['left_angle'], bw_xz['right_angle']],
+                [bw_xz['threshold'], bw_xz['threshold']],
+                'ko-', markersize=6, linewidth=2, label=f"xz BW={bw_xz['beamwidth']:.1f}°")
+
+    # Add -3dB reference lines and beamwidth markers for yz-plane
+    if bw_yz['beamwidth'] is not None:
+        plt.axhline(y=bw_yz['threshold'], color='lightcoral', linestyle=':', alpha=0.5, linewidth=1)
+        plt.plot([bw_yz['left_angle'], bw_yz['right_angle']],
+                [bw_yz['threshold'], bw_yz['threshold']],
+                'ro-', markersize=6, linewidth=2, label=f"yz BW={bw_yz['beamwidth']:.1f}°")
+
+    # Mark side lobes
+    if sll_xz['sll_value'] is not None:
+        plt.plot(sll_xz['sll_angle'], sll_xz['sll_value'], 'ks', markersize=8,
+                label=f"xz SLL={sll_xz['sll_relative']:.1f} dB")
+
+    if sll_yz['sll_value'] is not None:
+        plt.plot(sll_yz['sll_angle'], sll_yz['sll_value'], 'rs', markersize=8,
+                label=f"yz SLL={sll_yz['sll_relative']:.1f} dB")
 
     plt.grid(True)
     plt.ylabel("Directivity (dBi)")
     plt.xlabel("Theta/Phi (deg)")
-    plt.title(f"Frequency: {freq / 1e9:.3f} GHz")
-    plt.legend()
+
+    # Create detailed title with metrics
+    title_lines = [f"Frequency: {freq / 1e9:.3f} GHz"]
+    if bw_xz['beamwidth'] is not None:
+        title_lines.append(f"xz-plane: HPBW={bw_xz['beamwidth']:.1f}°")
+    if bw_yz['beamwidth'] is not None:
+        title_lines.append(f"yz-plane: HPBW={bw_yz['beamwidth']:.1f}°")
+
+    plt.title("\n".join(title_lines))
+    plt.legend(loc='best', fontsize=9)
     plt.tight_layout()
 
 
@@ -1312,8 +1425,7 @@ def export_efield_vtk_at_frequency(hdf5_path, target_freq, output_dir,
 
     # Convert time-domain to frequency-domain at target frequency
     print(f"[VTK] Converting to frequency domain at {target_freq/1e9:.3f} GHz...")
-    # Use DFT for exact frequency (same as PDF plots), not FFT which snaps to nearest bin
-    E_fd = td_to_fd_dft(field_dump.F_td, field_dump.time, field_dump.dt, target_freq)
+    E_fd = td_to_fd_fft(field_dump.F_td, field_dump.dt, target_freq)
 
     # E_fd shape: (Nx, Ny, Nz, 3) - complex values
     Ex_fd = E_fd[:, :, :, 0]

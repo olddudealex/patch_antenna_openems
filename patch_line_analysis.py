@@ -46,7 +46,7 @@ frequencies = []
 
 # setup feeding
 feed_width = 3.9  # mm
-feed_R = 150
+feed_R = 50
 
 # frequency of interest
 f0 = 5.8e9  # center frequency
@@ -66,6 +66,10 @@ wavelength_substrate = wavelength_freespace / sqrt(substrate_epsR)
 # patches
 patch_number = 5
 
+# width weighting factor
+widths_weighting = [0.9, 1, 1.1, 1, 0.9]  # for 5 patches
+lengths_weighting = [0.9, 1, 1.1, 1, 0.9]
+
 # antenna dimensions
 antenna_length_max = wavelength_substrate * (patch_number+0.5)  # This length used for substrate length
 
@@ -84,10 +88,10 @@ sim_box = [substrate_width+wavelength_freespace/4*air_gap,
 
 # geometrical parameters
 patch_length = 14.1  # mm
-patch_width = 19  # mm
+patch_width = 18  # mm
 
 # feed length between the patches
-feed_length = 14.1  # mm
+feed_length = 15.0  # mm
 
 # matching stub
 feed_length_0 = 10.2  # mm; = 14.1 - 3.9
@@ -103,7 +107,7 @@ rects_mm = []
 
 # General parameter setup
 Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_line_analysis_{patch_length}_{patch_width}_"
-                                               f"{patch_number}_{feed_length}")
+                                               f"{patch_number}_{feed_length}_{feed_width}_{feed_R}_{widths_weighting}_{lengths_weighting}")
 
 # FDTD setup
 FDTD = openEMS(NrTS=60000, EndCriteria=1e-5)
@@ -135,26 +139,36 @@ feed = CSX.AddMetal('feed')
 y_shift_first = (patch_length + feed_length) * (patch_number - 1) / 2
 coord_precision = 3  # down to 0.001mm
 
-start = [-feed_width / 2, -y_shift_first + patch_length / 2, substrate_thickness]
-stop = [feed_width / 2, y_shift_first - patch_length / 2, substrate_thickness]
+start = [-feed_width / 2, -y_shift_first, substrate_thickness]
+stop = [feed_width / 2, y_shift_first, substrate_thickness]
 feed.AddBox(priority=11, start=start, stop=stop)
 #FDTD.AddEdges2Grid(dirs='x', properties=feed, metal_edge_res=mesh_res / 4)
 #FDTD.AddEdges2Grid(dirs='x', properties=feed, metal_edge_res=None)
 mesh.AddLine('x', 0)
+mesh.AddLine('x', start[0] + 1)
+mesh.AddLine('x', stop[0] - 1)
 
 for patch_index in range(patch_number):
     y_shift = y_shift_first - (patch_length + feed_length) * patch_index
 
     # --- patch coordinates ---
-    start = np.round([-patch_width / 2,
-                      -patch_length / 2 - y_shift,
+    patch_width_eff = patch_width * widths_weighting[patch_index]
+    patch_length_eff = patch_length * lengths_weighting[patch_index]
+
+    start = np.round([-patch_width_eff / 2,
+                      -patch_length_eff / 2 - y_shift,
                       substrate_thickness], coord_precision)
-    stop = np.round([patch_width / 2,
-                     patch_length / 2 - y_shift,
+    stop = np.round([patch_width_eff / 2,
+                     patch_length_eff / 2 - y_shift,
                      substrate_thickness], coord_precision)
 
     patch.AddBox(priority=10, start=start.tolist(), stop=stop.tolist())
     FDTD.AddEdges2Grid(dirs='xy', properties=patch, metal_edge_res=None)  # use mesh exact alignment to patch edges
+
+    #mesh.AddLine('y', start[1] - 1)
+    #mesh.AddLine('y', stop[1] + 1)
+
+    mesh.AddLine('y', np.linspace(start[1], stop[1], 15))
 
     rects_mm.append({
         "x1": float(start[0]), "x2": float(stop[0]),
@@ -164,9 +178,10 @@ for patch_index in range(patch_number):
 network = CSX.AddMetal('network')
 
 # add matching scheme in the beginning
-reference_surface_y = -y_shift_first - patch_length / 2 - feed_length_0
+reference_surface_y = -y_shift_first - patch_length*lengths_weighting[0]/2- feed_length_0
 
-start = [-feed_width / 2, reference_surface_y + feed_length_0, substrate_thickness]
+#start = [-feed_width / 2, reference_surface_y + feed_length_0, substrate_thickness]
+start = [-feed_width / 2, 0, substrate_thickness]
 stop = [feed_width / 2, reference_surface_y, substrate_thickness]
 network.AddBox(priority=11, start=start, stop=stop)
 
@@ -179,7 +194,7 @@ start = [matching_width / 2, reference_surface_y - matching_length_1, substrate_
 stop = [matching_width / 2 + matching_length_2, reference_surface_y - matching_length_1 - matching_width,
         substrate_thickness]
 network.AddBox(priority=11, start=start, stop=stop)
-FDTD.AddEdges2Grid(dirs='x', properties=network, metal_edge_res=mesh_res / 4)
+#FDTD.AddEdges2Grid(dirs='x', properties=network, metal_edge_res=mesh_res / 4)
 #FDTD.AddEdges2Grid(dirs='y', properties=network, metal_edge_res=mesh_res / 2)
 FDTD.AddEdges2Grid(dirs='xy', properties=network, metal_edge_res=None)
 
@@ -207,7 +222,7 @@ res = mesh_res / 4  # Finer resolution for feeding line
 mesh.AddLine('y', [ feed_pos, feed_pos - res, feed_pos + res])
 
 # increase density
-mesh.SmoothMeshLines('all', mesh_res, 1.4)
+mesh.SmoothMeshLines('all', mesh_res, 1.1)
 
 # Add the nf2ff recording box
 nf2ff = FDTD.CreateNF2FFBox()
@@ -248,7 +263,8 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 reports_dir = os.path.join(script_dir, "reports")
 os.makedirs(reports_dir, exist_ok=True)
 filename = (f"feed_length={feed_length} length={patch_length}mm width={patch_width}mm "
-            f"patch_number={patch_number} results.pdf")
+            f"patch_number={patch_number} feed_width={feed_width} feed_R={feed_R} "
+            f"widths_weighting={widths_weighting} lengths_weighting={lengths_weighting} results.pdf")
 pdf_path = os.path.join(reports_dir, filename)
 pdf = PdfPages(pdf_path) if save_to_pdf else None
 
@@ -324,7 +340,7 @@ if draw_smith_chart:
 # ###############
 if draw_Ez_absolute or draw_Ez_snap:
     fd = read_hdf5_dump(f"{Sim_Path}/Et.h5")
-    E_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+    E_fd = td_to_fd_fft(fd.F_td, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
     patch_y_edges = [rect["y1"] for rect in rects_mm] + [rect["y2"] for rect in rects_mm]
 
 if draw_Ez_absolute:
@@ -384,7 +400,7 @@ if draw_Ez_snap:
 
 if draw_Js_absolute or draw_Jx or draw_Jy:
     fd = read_hdf5_dump(f"{Sim_Path}/Jt.h5")
-    J_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+    J_fd = td_to_fd_fft(fd.F_td, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
 
 if draw_Js_absolute:
     # 2D plot with your custom projection
