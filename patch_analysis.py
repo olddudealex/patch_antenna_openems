@@ -17,7 +17,7 @@ draw_CAD = 0  # Show 3D model before simulation
 draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
-enable_simulation = 0  # temporary dirs must contain data for plots when enable_simulation=0
+enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
 save_to_pdf = 1  # prints all the result to the pdf, doesn't show any plots interactively
 
 draw_complex_impedance = 1  # Show impedance Re/Im plots - impedance plot
@@ -30,9 +30,9 @@ draw_Ez_snap = 1
 draw_directivety_polar_db = 1  # Show directivity db polar plot - radiation pattern
 draw_directivety_polar = 1  # Show directivity polar plot    - radiation pattern
 draw_directivity_db = 1  # Show directivity dB plot    - radiation pattern
-draw_3d_pattern = 1  # Show antenna 3D pattern     - radiation pattern
+draw_3d_pattern = 0  # Show antenna 3D pattern     - radiation pattern
 
-draw_vtk_field = 1  # Export E-field to VTK for ParaView visualization
+draw_vtk_field = 0  # Export E-field to VTK for ParaView visualization
 vtk_phase_step_deg = 10  # Phase step in degrees for VTK animation (default: 10)
 
 # patch width (resonant length) in x-direction
@@ -44,9 +44,9 @@ conductances = []
 frequencies = []
 
 # setup feeding
-feed_length = 0  # mm
-feed_width = 1  # mm
-feed_R = 100  # Ohm
+feed_length = 15  # mm
+feed_width = 3.9  # mm
+feed_R = 50  # Ohm
 
 # frequency of interest
 f0 = 5.8e9  # center frequency
@@ -85,19 +85,19 @@ sim_box = [substrate_width+wavelength_freespace/4*air_gap,
 # sweep parameters
 sweep_number = 1
 
-length_start = 12.6  # mm
-width_start = 23  # mm
+length_start = 13.1  # mm
+width_start = 22  # mm
 
 inset_enable = False
 inset_length_start = 0  # mm
 inset_width = 0  # mm
 
 qwave_match_enable = False
-qwave_length_start = 0 #8.8  # mm
+qwave_length_start = 0 # mm
 qwave_width = 0.55  # mm
 
-width_step = 1  # mm
-length_step = 0  # mm
+width_step = 0  # mm
+length_step = 0.2  # mm
 inset_length_step = 0  # mm
 qwave_length_step = 0  # mm
 
@@ -294,9 +294,11 @@ for sweep_idx in range(0, sweep_number):
     # at required/actual resonant frequencies
     patchR = (1 + s11_1) / (1 - s11_1) * feed_R
     patchG_norm = (1 - s11_1) / (1 + s11_1)
+    patchG_norm_abs = (1 - np.abs(s11_1)) / (1 + np.abs(s11_1))
 
     patchR2 = (1 + s11_2) / (1 - s11_2) * feed_R
     patchG2_norm = (1 - s11_2) / (1 + s11_2)
+    patchG2_norm_abs = (1 - np.abs(s11_2)) / (1 + np.abs(s11_2))
 
     # ##################################
     # Plot Smith Chart
@@ -315,7 +317,7 @@ for sweep_idx in range(0, sweep_number):
     # ###############
     if draw_Ez_absolute or draw_Ez_snap:
         fd = read_hdf5_dump(f"{Sim_Path}/Et.h5")
-        E_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+        E_fd = td_to_fd_fft(fd.F_td, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
 
     if draw_Ez_absolute:
         # 2D plot with your custom projection
@@ -411,7 +413,7 @@ for sweep_idx in range(0, sweep_number):
     widths.append(patch_width)
     insets_lengths.append(inset_length)
     resistances.append(patchR2)
-    conductances.append(patchG2_norm)
+    conductances.append(patchG2_norm_abs)
     frequencies.append(meta["freq_res_hz"]/1e9 if meta["freq_res_hz"] else None)
 
     if save_to_pdf:
@@ -471,6 +473,21 @@ plt.grid(True)
 plt.ylabel("Resonance Frequency, GHz")
 plt.xlabel("Length, mm")
 plt.title("Frequency vs Length")
+plt.tight_layout()
+if save_to_pdf and pdf is not None:
+    pdf.savefig()
+    plt.close()
+
+plt.figure()
+ax = plt.gca()
+ax.plot(widths, conductances, "k-", linewidth=2, label="")
+ax.grid(True, which='both')
+ax.set_ylabel("Conductance")
+ax.set_xlabel("Width, mm")
+ax.set_title("Conductance vs Width")
+ax.yaxis.set_major_locator(plt.MultipleLocator(0.01))
+ax.xaxis.set_major_locator(plt.MultipleLocator(1.0))
+ax.xaxis.set_minor_locator(plt.MultipleLocator(0.2))
 plt.tight_layout()
 if save_to_pdf and pdf is not None:
     pdf.savefig()

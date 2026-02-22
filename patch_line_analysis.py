@@ -13,8 +13,8 @@ from utils import *
 from matplotlib.backends.backend_pdf import PdfPages
 
 # 1 = enable / 0 = disable different plots
-draw_CAD = 1  # Show 3D model before simulation
-draw_CAD_exit = 1  # Abort execution after displaying 3D model
+draw_CAD = 0  # Show 3D model before simulation
+draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
 enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
@@ -35,7 +35,7 @@ draw_directivety_polar = 1  # Show directivity polar plot - radiation pattern
 draw_directivity_db = 1  # Show directivity dB plot    - radiation pattern
 draw_3d_pattern = 1  # Show antenna 3D pattern     - radiation pattern
 
-draw_vtk_field = 1  # Export E-field to VTK for ParaView visualization
+draw_vtk_field = 0  # Export E-field to VTK for ParaView visualization
 vtk_phase_step_deg = 10  # Phase step in degrees for VTK animation (default: 10)
 
 # Arrays to track different configurations
@@ -67,10 +67,10 @@ wavelength_substrate = wavelength_freespace / sqrt(substrate_epsR)
 patch_number = 5
 
 # exact patch dimensions (mm)
-patch_widths = [19, 19, 19, 19, 19]  # for 5 patches
-patch_lengths = [14.6, 14.6, 14.6, 14.6, 14.6]  # for 5 patches
-#patch_widths = [11, 17.8, 22, 17.8, 11]  # for 5 patches
-#patch_lengths = [13.8, 13.2, 13.1, 13.2, 13.8]  # for 5 patches
+#patch_widths = [19, 19, 19, 19, 19]  # for 5 patches
+#patch_lengths = [14.6, 14.6, 14.6, 14.6, 14.6]  # for 5 patches
+patch_widths = [13.4, 20.2, 23.4, 20.2, 13.4]  # for 5 patches
+patch_lengths = [15.1, 14.5, 14.4, 14.5, 15.1]  # for 5 patches
 
 patch_widths_delta = 0.0 # mm
 for i in range(patch_number):
@@ -85,7 +85,7 @@ antenna_length_max = wavelength_substrate * (patch_number+0.5)  # This length us
 
 # substrate dimensions
 substrate_width = 40 # wavelength_freespace
-substrate_length = 160 # antenna_length_max + wavelength_freespace/2
+substrate_length = 180 # antenna_length_max + wavelength_freespace/2
 substrate_thickness = 1.524
 
 # Air gap(number of free space 1/4-wavelengths)
@@ -105,7 +105,7 @@ feed_length_step = 0.5  # mm
 feed_length_0 = 14.5  # mm
 matching_length_1 = 0  # mm
 matching_length_2 = 0  # mm
-matching_length_3 = 0  # mm, it's just input feed line, not for matching
+matching_length_3 = 9.7  # mm, it's just input feed line, not for matching
 matching_width = 3.9  # mm
 
 ########################################################################################
@@ -130,7 +130,7 @@ for sweep_idx in range(0, sweep_number):
     FDTD.SetCSX(CSX)
     mesh = CSX.GetGrid()
     mesh.SetDeltaUnit(1e-3)
-    mesh_res = C0 / (f0 + fc) / 1e-3 / 20
+    mesh_res = C0 / (f0 + fc) / 1e-3 / 10
     
     # Generate properties, primitives and mesh-grid
     # initialize the mesh with the "air-box" dimensions
@@ -159,25 +159,22 @@ for sweep_idx in range(0, sweep_number):
 
     # Track current position along Y axis (starting from PCB edge)
     current_y = pcb_edge_y
+    
+    if matching_length_3 > 0:
+        # Matching stub at the very edge
+        start = [-matching_width / 2, current_y, substrate_thickness]
+        stop = [matching_width / 2, current_y + matching_length_1 + matching_width + matching_length_3, substrate_thickness]
+        feed.AddBox(priority=11, start=start, stop=stop)
 
-    # Input matching network and feed line to first patch
-    network = CSX.AddMetal('network')
-
-    # Matching stub at the very edge
-    start = [-matching_width / 2, current_y, substrate_thickness]
-    stop = [matching_width / 2, current_y + matching_length_1 + matching_width + matching_length_3, substrate_thickness]
-    network.AddBox(priority=11, start=start, stop=stop)
-
-    # Optional stub extension (usually 0)
-    if matching_length_2 > 0:
+        # Optional stub extension (usually 0)
         start = [matching_width / 2, current_y + matching_length_1, substrate_thickness]
         stop = [matching_width / 2 + matching_length_2, current_y + matching_length_1 + matching_width, substrate_thickness]
-        network.AddBox(priority=11, start=start, stop=stop)
+        feed.AddBox(priority=11, start=start, stop=stop)
 
-    FDTD.AddEdges2Grid(dirs='xy', properties=network, metal_edge_res=None)
+        # Move past matching network
+        current_y += matching_length_1 + matching_width + matching_length_3
 
-    # Move past matching network
-    current_y += matching_length_1 + matching_width + matching_length_3
+        #FDTD.AddEdges2Grid(dirs='xy', properties=feed, metal_edge_res=None)
 
     # Feed line from matching to first patch
     feed_start_y = current_y
@@ -205,9 +202,9 @@ for sweep_idx in range(0, sweep_number):
                          substrate_thickness], coord_precision)
 
         patch.AddBox(priority=10, start=start.tolist(), stop=stop.tolist())
-        FDTD.AddEdges2Grid(dirs='xy', properties=patch, metal_edge_res=None)
+        FDTD.AddEdges2Grid(dirs='xy', properties=patch, metal_edge_res=mesh_res / 4)
 
-        mesh.AddLine('y', np.linspace(start[1], stop[1], 15))
+        #mesh.AddLine('y', np.linspace(start[1], stop[1], 15))
 
         rects_mm.append({
             "x1": float(start[0]), "x2": float(stop[0]),
@@ -235,6 +232,7 @@ for sweep_idx in range(0, sweep_number):
     stop = [substrate_width/2, substrate_length/2, 0]
     gnd.AddBox(start, stop, priority=10)
     FDTD.AddEdges2Grid(dirs='xy', properties=gnd)
+    FDTD.AddEdges2Grid(dirs='x', properties=feed, metal_edge_res=mesh_res / 4)
 
     # apply the excitation & resist as a current source at the PCB edge
     start = [-matching_width/2, feed_pos, 0]

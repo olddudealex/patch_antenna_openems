@@ -327,7 +327,7 @@ for sweep_idx in range(0, sweep_number):
     # ###############
     if draw_Ez_absolute or draw_Ez_snap:
         fd = read_hdf5_dump(f"{Sim_Path}/Et.h5")
-        E_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+        E_fd = td_to_fd_fft(fd.F_td, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
 
     if draw_Ez_absolute:
         # 2D plot with your custom projection

@@ -5,3 +5,7 @@ __pycache__
 .vscode
 .idea
 .claude
+reports/vtk_*/
+*3D_pattern.html
+touchstone/*
+meshlines/*

@@ -23,7 +23,7 @@ draw_CAD = 0  # Show 3D model before simulation
 draw_CAD_exit = 0  # Abort execution after displaying 3D model
 
 # 1=enable / 0=disable simulation (can be used to draw plots without running simulation)
-enable_simulation = 0  # temporary dirs must contain data for plots when enable_simulation=0
+enable_simulation = 1  # temporary dirs must contain data for plots when enable_simulation=0
 save_to_pdf = 1  # prints all the result to the pdf, doesn't show any plots interactively
 
 draw_complex_impedance = 1  # Show impedance Re/Im plots - impedance plot
@@ -82,7 +82,7 @@ air_gap = 2
 
 # size of the simulation box
 sim_box_start = [-20, -20, -10]
-sim_box_stop = [60, 200, 25]
+sim_box_stop = [68, 200, 25]
 
 # General parameter setup
 Sim_Path = os.path.join(tempfile.gettempdir(), f"patch_line_analysis")
@@ -119,7 +119,7 @@ coord_precision = 3  # down to 0.001mm
 
 #  apply the excitation & resist as a current source
 feed_pos_y = 0
-feed_pos_x = 8.725
+feed_pos_x = 8.7
 start = [-feed_width / 2 + feed_pos_x, feed_pos_y, -0.001]
 stop = [feed_width / 2 + feed_pos_x, feed_pos_y + 1.0, substrate_thickness]
 port = FDTD.AddLumpedPort(1, feed_R, start, stop, 'z', 1.0,
@@ -138,7 +138,7 @@ mesh.AddLine('y', [feed_pos_y, feed_pos_y - res, feed_pos_y + res])
 mesh.SmoothMeshLines('all', mesh_res, 1.4)
 
 # Add the nf2ff recording box
-nf2ff = FDTD.CreateNF2FFBox(start=[-15, -15, -2], stop=[55, 185, 17])
+nf2ff = FDTD.CreateNF2FFBox(start=[-15, -15, -2], stop=[63, 185, 17])
 
 # Add the dumping of E field
 et = CSX.AddDump('Et', dump_type=0, file_type=1)
@@ -245,7 +245,7 @@ if draw_smith_chart:
 # ###############
 if draw_Ez_absolute or draw_Ez_snap:
     fd = read_hdf5_dump(f"{Sim_Path}/Et.h5")
-    E_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+    E_fd = td_to_fd_fft(fd.F_td, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
 
 if draw_Ez_absolute:
     # 2D plot with your custom projection
@@ -254,8 +254,7 @@ if draw_Ez_absolute:
         func=lambda Ez: np.abs(Ez),
         func_str="|Ez|",
         cmap="jet",
-        outside_color=None,
-        clim=(4.8, 5.3)
+        outside_color=None
     )
     finalize_plot()
 
@@ -264,8 +263,7 @@ if draw_Ez_absolute:
         fd, E_fd, z_value=0.0008,
         func=lambda Ez: np.abs(Ez),
         func_str="|Ez|",
-        #clim=(2, 12),
-        x_value=0.008725
+        x_value=0.0085
     )
     finalize_plot()
 
@@ -276,8 +274,7 @@ if draw_Ez_snap:
         func=lambda Ez: np.real(Ez),
         func_str=f"Real E_fd",
         cmap="jet",
-        outside_color=None,
-        clim=(4.8, 5.3)
+        outside_color=None
     )
     finalize_plot()
 
@@ -286,14 +283,13 @@ if draw_Ez_snap:
         fd, real(E_fd), z_value=0.0008,
         func=lambda Ez: np.real(Ez),
         func_str=f"Real E_fd",
-        #clim=(-12, 4),
-        x_value=0.008725
+        x_value=0.0085
     )
     finalize_plot()
 
 if draw_Js_absolute or draw_Jx or draw_Jy:
     fd = read_hdf5_dump(f"{Sim_Path}/Jt.h5")
-    J_fd = td_to_fd_dft(fd.F_td, fd.time, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
+    J_fd = td_to_fd_fft(fd.F_td, fd.dt, freq[freqInd])  # -> (Nx, Ny, Nz, 3)
 
 if draw_Js_absolute:
     # 2D plot with your custom projection
