@@ -6,6 +6,5 @@ __pycache__
 .idea
 .claude
 reports/vtk_*/
-*3D_pattern.html
 touchstone/*
 meshlines/*
